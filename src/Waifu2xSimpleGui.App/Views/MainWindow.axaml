@@ -1,0 +1,251 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Waifu2xSimpleGui.App.ViewModels"
+        xmlns:engines="using:Waifu2xSimpleGui.Core.Engines"
+        xmlns:sys="using:System"
+        x:Class="Waifu2xSimpleGui.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/icon.ico"
+        Title="Waifu2x-Simple-GUI"
+        Width="1100" Height="760" MinWidth="760" MinHeight="520">
+
+  <Window.Styles>
+    <!-- Room for the overlay scrollbar so it doesn't cover the rightmost column. -->
+    <Style Selector="ListBox.compact">
+      <Setter Property="Padding" Value="0,0,16,0" />
+    </Style>
+    <Style Selector="ListBox.compact ListBoxItem">
+      <Setter Property="Padding" Value="8,3" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="*,Auto,140" ColumnDefinitions="*,320" Margin="12" RowSpacing="8" ColumnSpacing="12">
+
+    <!-- File list / drop zone -->
+    <Border Grid.Row="0" Grid.Column="0" x:Name="DropZone" DragDrop.AllowDrop="True"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="1" CornerRadius="6">
+      <DockPanel>
+        <DockPanel DockPanel.Dock="Top" Margin="8">
+          <ToggleButton DockPanel.Dock="Right" Content="Light theme" IsChecked="{Binding LightTheme}" />
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Button Content="Add files…" Command="{Binding AddFilesCommand}" />
+            <Button Content="Add folder…" Command="{Binding AddFolderCommand}" />
+            <Button Content="Clear finished" Command="{Binding ClearFinishedCommand}" />
+            <Button Content="Clear all" Command="{Binding ClearFilesCommand}" />
+            <Button x:Name="CompareButton" Content="Compare" ToolTip.Tip="Before/after of the selected finished file (or double-click it)" />
+          </StackPanel>
+        </DockPanel>
+        <Panel>
+          <TextBlock Text="Drop images, GIFs, videos or folders here"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5"
+                     IsVisible="{Binding !Files.Count}" />
+          <ListBox x:Name="FileList" Classes="compact" ItemsSource="{Binding Files}" Background="Transparent">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:FileItemViewModel">
+                <Grid ColumnDefinitions="*,60,110,100" ColumnSpacing="8" Background="Transparent" ToolTip.Tip="{Binding ToolTip}">
+                  <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding KindLabel}" Opacity="0.7" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="2" Text="{Binding StatusText}" VerticalAlignment="Center" />
+                  <!-- Fluent's ProgressBar defaults to MinWidth=200, which overflows the column. -->
+                  <ProgressBar Grid.Column="3" MinWidth="0" Height="6" Value="{Binding Progress}" Maximum="100" IsIndeterminate="{Binding !HasProgress}" IsVisible="{Binding IsProcessing}" VerticalAlignment="Center" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Panel>
+      </DockPanel>
+    </Border>
+
+    <!-- Settings -->
+    <ScrollViewer Grid.Row="0" Grid.Column="1" Grid.RowSpan="2">
+      <!-- Fluent scrollbars overlay content and widen to ~16px on hover: keep the controls clear of them. -->
+      <StackPanel Spacing="10" Margin="0,0,20,0">
+        <TextBlock Text="Engine" FontWeight="SemiBold" />
+        <ComboBox ItemsSource="{Binding Engines}" SelectedItem="{Binding SelectedEngine}" HorizontalAlignment="Stretch">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="engines:UpscalerDescriptor">
+              <TextBlock Text="{Binding DisplayName}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+
+        <TextBlock Text="Model" FontWeight="SemiBold" />
+        <ComboBox ItemsSource="{Binding AvailableModels}" SelectedItem="{Binding SelectedModel}" HorizontalAlignment="Stretch">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="engines:ModelInfo">
+              <TextBlock Text="{Binding DisplayName}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+          <StackPanel Grid.Column="0" Spacing="4">
+            <TextBlock Text="Output size" FontWeight="SemiBold" />
+            <ComboBox ItemsSource="{Binding SizeModes}" SelectedItem="{Binding SizeMode}" HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:SizeModeChoice">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="4" IsVisible="{Binding IsFactorMode}">
+            <TextBlock Text="Factor" FontWeight="SemiBold" />
+            <NumericUpDown Value="{Binding TargetFactor}" Minimum="0.1" Maximum="32" Increment="0.5" FormatString="0.##" />
+          </StackPanel>
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto,*" ColumnSpacing="6" IsVisible="{Binding IsFitMode}">
+          <NumericUpDown Grid.Column="0" Value="{Binding FitWidth}" Minimum="1" Maximum="65535" Increment="16" FormatString="0" ToolTip.Tip="Max width" />
+          <TextBlock Grid.Column="1" Text="×" VerticalAlignment="Center" />
+          <NumericUpDown Grid.Column="2" Value="{Binding FitHeight}" Minimum="1" Maximum="65535" Increment="16" FormatString="0" ToolTip.Tip="Max height" />
+        </Grid>
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+          <StackPanel Grid.Column="0" Spacing="4" IsVisible="{Binding IsFactorMode}">
+            <TextBlock Text="Scale" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding FactorHint}" FontSize="12" Opacity="0.75" TextWrapping="Wrap" />
+          </StackPanel>
+          <StackPanel Grid.Column="0" Spacing="4" IsVisible="{Binding ShowScale}">
+            <TextBlock Text="Scale" FontWeight="SemiBold" />
+            <ComboBox ItemsSource="{Binding AvailableScales}" SelectedItem="{Binding SelectedScale}" HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="sys:Int32">
+                  <TextBlock Text="{Binding StringFormat={}{0}x}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="4" IsVisible="{Binding HasDenoise}">
+            <TextBlock Text="Denoise" FontWeight="SemiBold" />
+            <ComboBox ItemsSource="{Binding AvailableNoiseLevels}" SelectedItem="{Binding SelectedNoiseLevel}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+        </Grid>
+
+        <TextBlock Text="GPU" FontWeight="SemiBold" />
+        <ComboBox ItemsSource="{Binding Gpus}" SelectedItem="{Binding SelectedGpu}" HorizontalAlignment="Stretch" PlaceholderText="Detecting…">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:GpuOption">
+              <TextBlock Text="{Binding Label}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+
+        <CheckBox Content="TTA (slower, slightly better)" IsChecked="{Binding Tta}" />
+
+        <TextBlock Text="Output folder" FontWeight="SemiBold" />
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+          <TextBox Grid.Column="0" Text="{Binding OutputDirectory}" PlaceholderText="Next to source files" />
+          <Button Grid.Column="1" Content="…" Command="{Binding BrowseOutputCommand}" />
+        </Grid>
+
+        <Grid ColumnDefinitions="*,90" ColumnSpacing="8">
+          <StackPanel Grid.Column="0" Spacing="4">
+            <TextBlock Text="File name" FontWeight="SemiBold" />
+            <TextBox Text="{Binding FileNameTemplate}" ToolTip.Tip="Tokens: {name} {engine} {scale} {noise}" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="4">
+            <TextBlock Text="Format" FontWeight="SemiBold" />
+            <ComboBox ItemsSource="{Binding ImageFormats}" SelectedItem="{Binding ImageFormat}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+        </Grid>
+
+        <Grid ColumnDefinitions="*,120" ColumnSpacing="8">
+          <TextBlock Grid.Column="0" Text="Animated GIFs become" VerticalAlignment="Center" />
+          <ComboBox Grid.Column="1" ItemsSource="{Binding AnimationFormats}" SelectedItem="{Binding GifOutput}" HorizontalAlignment="Stretch"
+                    ToolTip.Tip="APNG: full color + transparency. MP4: smallest; transparency becomes black." />
+        </Grid>
+
+        <CheckBox Content="Overwrite existing outputs" IsChecked="{Binding OverwriteExisting}" />
+        <CheckBox Content="Scan sub-folders" IsChecked="{Binding ScanSubfolders}" />
+
+        <Expander Header="Video" HorizontalAlignment="Stretch">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,110" ColumnSpacing="8">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="Encoder" />
+                <ComboBox ItemsSource="{Binding VideoEncoders}" SelectedItem="{Binding VideoEncoder}" HorizontalAlignment="Stretch" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="4">
+                <TextBlock Text="Quality" ToolTip.Tip="CRF / CQ / QP — lower is better and larger" />
+                <NumericUpDown Value="{Binding VideoCrf}" Minimum="0" Maximum="63" FormatString="0" />
+              </StackPanel>
+            </Grid>
+            <StackPanel Spacing="4" IsVisible="{Binding HasVideoPreset}">
+              <TextBlock Text="Preset" />
+              <ComboBox ItemsSource="{Binding VideoPresets}" SelectedItem="{Binding VideoPreset}" HorizontalAlignment="Stretch" />
+            </StackPanel>
+            <StackPanel Spacing="4">
+              <TextBlock Text="Frames per segment" ToolTip.Tip="Bounds temp disk use; finished segments survive cancel" />
+              <NumericUpDown Value="{Binding VideoSegmentFrames}" Minimum="30" Maximum="100000" Increment="100" FormatString="0" />
+            </StackPanel>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="Frame interpolation" ToolTip.Tip="RIFE; multiplies the frame rate" />
+                <ComboBox ItemsSource="{Binding InterpolationChoices}" SelectedItem="{Binding Interpolation}" HorizontalAlignment="Stretch">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:InterpolationChoice">
+                      <TextBlock Text="{Binding Label}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="4" IsVisible="{Binding IsInterpolating}">
+                <TextBlock Text="RIFE model" />
+                <ComboBox ItemsSource="{Binding RifeModels}" SelectedItem="{Binding SelectedRifeModel}" HorizontalAlignment="Stretch">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="engines:RifeModel">
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+            </Grid>
+            <CheckBox Content="Interpolate only (no upscaling)" IsChecked="{Binding InterpolateOnly}" IsVisible="{Binding IsInterpolating}" />
+            <CheckBox Content="Keep variable frame rate" IsChecked="{Binding VfrPassthrough}"
+                      ToolTip.Tip="Phones and screen captures: keep each frame's original timing instead of converting to constant fps." />
+          </StackPanel>
+        </Expander>
+
+        <Expander Header="Advanced" HorizontalAlignment="Stretch">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="Tile size (0 = auto)" />
+                <NumericUpDown Value="{Binding TileSize}" Minimum="0" Maximum="4096" Increment="32" FormatString="0" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="4">
+                <TextBlock Text="Threads (load:proc:save)" />
+                <TextBox Text="{Binding Threads}" />
+              </StackPanel>
+            </Grid>
+            <TextBlock Text="Temp folder" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+              <TextBox Grid.Column="0" Text="{Binding TempDirectory}" PlaceholderText="System temp" />
+              <Button Grid.Column="1" Content="…" Command="{Binding BrowseTempCommand}" />
+            </Grid>
+            <TextBlock Text="Engines folder" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+              <TextBox Grid.Column="0" Text="{Binding EnginesDirectory}" PlaceholderText="Default" />
+              <Button Grid.Column="1" Content="…" Command="{Binding BrowseEnginesCommand}" />
+            </Grid>
+          </StackPanel>
+        </Expander>
+
+        <TextBlock Text="{Binding EngineStatus}" TextWrapping="Wrap" FontSize="12" Opacity="0.75" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- Run controls -->
+    <Grid Grid.Row="1" Grid.Column="0" ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
+      <Button Grid.Column="0" Content="Start" Classes="accent" Command="{Binding StartCommand}" MinWidth="90" />
+      <Button Grid.Column="1" Content="{Binding PauseLabel}" Command="{Binding TogglePauseCommand}" MinWidth="90" />
+      <Button Grid.Column="2" Content="Cancel" Command="{Binding CancelCommand}" MinWidth="90" />
+      <ProgressBar Grid.Column="3" Value="{Binding OverallProgress}" Maximum="100" VerticalAlignment="Center" MinWidth="60" />
+      <TextBlock Grid.Column="4" Text="{Binding Summary}" VerticalAlignment="Center" Width="270" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Summary}" />
+    </Grid>
+
+    <!-- Log -->
+    <ListBox Classes="compact" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" ItemsSource="{Binding Log}" FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+  </Grid>
+</Window>

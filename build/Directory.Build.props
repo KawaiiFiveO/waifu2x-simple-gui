@@ -1,0 +1,8 @@
+<Project>
+  <!-- Isolates build/package.cs (a file-based app) from the solution's analyzer/warning settings. -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

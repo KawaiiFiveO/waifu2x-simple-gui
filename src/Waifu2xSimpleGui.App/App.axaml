@@ -1,0 +1,24 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Waifu2xSimpleGui.App.App"
+             RequestedThemeVariant="Dark">
+             <!-- Dark by default; the "Light theme" toggle switches at runtime (MainViewModel.ApplyTheme). -->
+
+    <Application.Styles>
+        <FluentTheme>
+            <FluentTheme.Palettes>
+                <!-- Fixed accent: the OS accent can be grey (unreadable white-on-grey buttons) or absent on Linux. -->
+                <ColorPaletteResources x:Key="Light" Accent="#2F6FD0" />
+                <!-- Dark mode: grey surfaces instead of Fluent's near-black. -->
+                <ColorPaletteResources x:Key="Dark"
+                                       Accent="#3A7FE0"
+                                       RegionColor="#2B2B2B"
+                                       AltHigh="#2B2B2B"
+                                       AltMediumHigh="#333333"
+                                       ChromeLow="#3A3A3A"
+                                       ChromeMediumLow="#3C3C3C"
+                                       ChromeMedium="#444444" />
+            </FluentTheme.Palettes>
+        </FluentTheme>
+    </Application.Styles>
+</Application>

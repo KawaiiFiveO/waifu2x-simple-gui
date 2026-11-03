@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Waifu2xSimpleGui.Core</RootNamespace>
+    <!-- Core must stay trim/AOT-safe: enables the trim + AOT analyzers. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <!-- LibraryImport string marshalling (FileLinker). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Waifu2xSimpleGui.Core.Tests" />
+  </ItemGroup>
+
+</Project>

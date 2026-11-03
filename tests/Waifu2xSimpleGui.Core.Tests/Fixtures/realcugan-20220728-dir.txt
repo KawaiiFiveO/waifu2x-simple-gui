@@ -1,0 +1,10 @@
+both deer.jpg and deer.bmp output deer.png ! deer.jpg will output deer.jpg.png
+[0 AMD Radeon RX 9070 XT]  queueC=1[8]  queueG=0[8]  queueT=2[1]
+[0 AMD Radeon RX 9070 XT]  bugsbn1=0  bugbilz=0  bugcopc=0  bugihfa=0
+[0 AMD Radeon RX 9070 XT]  fp16-p/s/a=1/1/1  int8-p/s/a=1/1/1
+[0 AMD Radeon RX 9070 XT]  subgroup=64  basic=1  vote=1  ballot=1  shuffle=1
+decode image C:\job\in/broken.png failed
+C:\job\in/5 orig �.jpg -> C:\job\out/5 orig �.png done
+C:\job\in/Puffin_Bird-Original.jpg -> C:\job\out/Puffin_Bird-Original.png done
+C:\job\in/deer.bmp -> C:\job\out/deer.png done
+C:\job\in/deer.jpg -> C:\job\out/deer.jpg.png done

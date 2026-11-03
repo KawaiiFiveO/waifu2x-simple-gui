@@ -1,0 +1,10 @@
+[0 AMD Radeon RX 9070 XT]  queueC=1[8]  queueT=2[1]
+[0 AMD Radeon RX 9070 XT]  fp16-p/s/u/a=1/1/1/1  int8-p/s/u/a=1/1/1/1
+[0 AMD Radeon RX 9070 XT]  subgroup=64(32~64)  ops=1/1/1/1/1/1/1/1/1/1
+[0 AMD Radeon RX 9070 XT]  fp16-cm=16x16x16  int8-cm=16x16x16  bf16-cm=16x16x16  fp8-cm=16x16x16
+decode image C:\job\in/t1.tga failed
+decode image C:\job\in/t2.tiff failed
+C:\job\in/5 orig �.jpg -> C:\job\out/5 orig �.png done
+C:\job\in/Puffin_Bird-Original.jpg -> C:\job\out/Puffin_Bird-Original.png done
+C:\job\in/deer.jpg -> C:\job\out/deer.png done
+C:\job\in/t3.webp -> C:\job\out/t3.png done

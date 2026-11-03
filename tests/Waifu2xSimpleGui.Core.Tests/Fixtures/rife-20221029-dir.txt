@@ -1,0 +1,16 @@
+[0 AMD Radeon RX 9070 XT]  queueC=1[8]  queueG=0[8]  queueT=2[1]
+[0 AMD Radeon RX 9070 XT]  bugsbn1=0  bugbilz=0  bugcopc=0  bugihfa=0
+[0 AMD Radeon RX 9070 XT]  fp16-p/s/a=1/1/1  int8-p/s/a=1/1/1
+[0 AMD Radeon RX 9070 XT]  subgroup=64  basic=1  vote=1  ballot=1  shuffle=1
+C:\job\in/00000001.png C:\job\in/00000002.png 0.000000 -> C:\job\o2/00000001.png done
+C:\job\in/00000002.png C:\job\in/00000003.png 0.000000 -> C:\job\o2/00000003.png done
+C:\job\in/00000003.png C:\job\in/00000004.png 0.000000 -> C:\job\o2/00000005.png done
+C:\job\in/00000001.png C:\job\in/00000002.png 0.500000 -> C:\job\o2/00000002.png done
+C:\job\in/00000002.png C:\job\in/00000003.png 0.500000 -> C:\job\o2/00000004.png done
+C:\job\in/00000004.png C:\job\in/00000005.png 0.000000 -> C:\job\o2/00000007.png done
+C:\job\in/00000003.png C:\job\in/00000004.png 0.500000 -> C:\job\o2/00000006.png done
+C:\job\in/00000005.png C:\job\in/00000006.png 0.000000 -> C:\job\o2/00000009.png done
+C:\job\in/00000004.png C:\job\in/00000005.png 0.500000 -> C:\job\o2/00000008.png done
+C:\job\in/00000005.png C:\job\in/00000006.png 1.000000 -> C:\job\o2/00000011.png done
+C:\job\in/00000005.png C:\job\in/00000006.png 1.000000 -> C:\job\o2/00000012.png done
+C:\job\in/00000005.png C:\job\in/00000006.png 0.500000 -> C:\job\o2/00000010.png done

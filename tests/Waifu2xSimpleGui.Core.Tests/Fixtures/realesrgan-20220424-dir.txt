@@ -1,0 +1,44 @@
+[0 AMD Radeon RX 9070 XT]  queueC=1[8]  queueG=0[8]  queueT=2[1]
+[0 AMD Radeon RX 9070 XT]  bugsbn1=0  bugbilz=0  bugcopc=0  bugihfa=0
+[0 AMD Radeon RX 9070 XT]  fp16-p/s/a=1/1/1  int8-p/s/a=1/1/1
+[0 AMD Radeon RX 9070 XT]  subgroup=64  basic=1  vote=1  ballot=1  shuffle=1
+decode image C:\job\in/t1.tga failed
+0.00%
+0.00%
+25.00%
+16.67%
+33.33%
+50.00%
+75.00%
+50.00%
+66.67%
+0.00%
+83.33%
+8.33%
+16.67%
+25.00%
+C:\job\in/5 orig �.jpg -> C:\job\out/5 orig �.png done
+33.33%
+41.67%
+50.00%
+58.33%
+66.67%
+75.00%
+83.33%
+C:\job\in/Puffin_Bird-Original.jpg -> C:\job\out/Puffin_Bird-Original.png done
+91.67%
+decode image C:\job\in/t2.tiff failed
+0.00%
+8.33%
+16.67%
+25.00%
+33.33%
+41.67%
+50.00%
+58.33%
+66.67%
+75.00%
+83.33%
+91.67%
+C:\job\in/deer.jpg -> C:\job\out/deer.png done
+C:\job\in/t3.webp -> C:\job\out/t3.png done

@@ -1,0 +1,22 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Waifu2xSimpleGui.App.Views.PreviewWindow"
+        Title="Compare"
+        Icon="/Assets/icon.ico"
+        Width="1000" Height="720" MinWidth="400" MinHeight="300">
+  <DockPanel Margin="8">
+    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="0,8,0,0">
+      <TextBlock Grid.Column="0" Text="Original" VerticalAlignment="Center" />
+      <Slider Grid.Column="1" x:Name="Split" Minimum="0" Maximum="1" Value="0.5" />
+      <TextBlock Grid.Column="2" Text="Upscaled" VerticalAlignment="Center" />
+    </Grid>
+    <TextBlock DockPanel.Dock="Top" x:Name="Info" Opacity="0.75" Margin="0,0,0,6" TextTrimming="CharacterEllipsis" />
+    <!-- Both images fill the same box (Uniform), so they line up; the upscaled one is clipped at the split. -->
+    <Panel x:Name="Stage" Background="Transparent" Cursor="SizeWestEast">
+      <Image x:Name="Before" Stretch="Uniform" RenderOptions.BitmapInterpolationMode="None" />
+      <Image x:Name="After" Stretch="Uniform" />
+      <Border x:Name="Divider" Width="2" Background="White" Opacity="0.7" HorizontalAlignment="Left" IsHitTestVisible="False" />
+      <TextBlock x:Name="Status" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.6" />
+    </Panel>
+  </DockPanel>
+</Window>

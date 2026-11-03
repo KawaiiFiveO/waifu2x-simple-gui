@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Waifu2xSimpleGui.App/Waifu2xSimpleGui.App.csproj" />
+    <Project Path="src/Waifu2xSimpleGui.Core/Waifu2xSimpleGui.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Waifu2xSimpleGui.Core.Tests/Waifu2xSimpleGui.Core.Tests.csproj" />
+  </Folder>
+</Solution>
