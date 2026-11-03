@@ -18,8 +18,8 @@ public sealed class RifeNcnnVulkan(string engineDirectory)
 
     public static IReadOnlyList<RifeModel> Models { get; } =
     [
-        new("rife-v4.6", "v4.6 (best, any factor)", true),
-        new("rife-v4", "v4 (any factor)", true),
+        new("rife-v4.6", "v4.6 (best)", true),
+        new("rife-v4", "v4", true),
         new("rife-v3.1", "v3.1 (2x)", false),
         new("rife-v2.4", "v2.4 (2x)", false),
         new("rife-anime", "anime (2x)", false),

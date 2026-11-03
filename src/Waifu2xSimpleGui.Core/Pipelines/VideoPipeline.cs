@@ -40,7 +40,15 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
         }
         else if (info.IsVfr)
         {
-            progress.Report(new JobLog($"{name}: variable frame rate — output is constant {info.FrameRate.Value:0.###} fps."));
+            var outFps = info.FrameRate.Value * Math.Max(1, settings.InterpolationFactor);
+            progress.Report(new JobLog($"{name}: variable frame rate — output is constant {outFps:0.###} fps."));
+        }
+
+        if (settings.InterpolationFactor > 1)
+        {
+            progress.Report(new JobLog(info.FrameTimes is null
+                ? $"{name}: interpolating {info.FrameRate.Value:0.###} → {info.FrameRate.Value * settings.InterpolationFactor:0.###} fps."
+                : $"{name}: interpolating {settings.InterpolationFactor}x (variable timing kept)."));
         }
 
         if (info.IsHdr)

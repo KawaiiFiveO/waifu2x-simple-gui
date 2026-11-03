@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Waifu2xSimpleGui.App.ViewModels"
         xmlns:engines="using:Waifu2xSimpleGui.Core.Engines"
+        xmlns:media="using:Waifu2xSimpleGui.Core.Media"
         xmlns:sys="using:System"
         x:Class="Waifu2xSimpleGui.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
@@ -133,6 +134,31 @@
 
         <CheckBox Content="TTA (slower, slightly better)" IsChecked="{Binding Tta}" />
 
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+          <StackPanel Grid.Column="0" Spacing="4">
+            <TextBlock Text="Frame interpolation" FontWeight="SemiBold" ToolTip.Tip="Videos only: RIFE multiplies the frame rate" />
+            <ComboBox ItemsSource="{Binding InterpolationChoices}" SelectedItem="{Binding Interpolation}" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Videos only: RIFE multiplies the frame rate">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:InterpolationChoice">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="4" IsVisible="{Binding IsInterpolating}">
+            <TextBlock Text="RIFE model" FontWeight="SemiBold" />
+            <ComboBox ItemsSource="{Binding RifeModels}" SelectedItem="{Binding SelectedRifeModel}" HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="engines:RifeModel">
+                  <TextBlock Text="{Binding DisplayName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+        </Grid>
+        <CheckBox Content="Interpolate only (no upscaling)" IsChecked="{Binding InterpolateOnly}" IsVisible="{Binding IsInterpolating}" />
+
         <TextBlock Text="Output folder" FontWeight="SemiBold" />
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
           <TextBox Grid.Column="0" Text="{Binding OutputDirectory}" PlaceholderText="Next to source files" />
@@ -146,14 +172,26 @@
           </StackPanel>
           <StackPanel Grid.Column="1" Spacing="4">
             <TextBlock Text="Format" FontWeight="SemiBold" />
-            <ComboBox ItemsSource="{Binding ImageFormats}" SelectedItem="{Binding ImageFormat}" HorizontalAlignment="Stretch" />
+            <ComboBox ItemsSource="{Binding ImageFormats}" SelectedItem="{Binding ImageFormat}" HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="engines:ImageFormat">
+                  <TextBlock Text="{Binding Converter={x:Static vm:DisplayConverters.Lowercase}}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
           </StackPanel>
         </Grid>
 
         <Grid ColumnDefinitions="*,120" ColumnSpacing="8">
           <TextBlock Grid.Column="0" Text="Animated GIFs become" VerticalAlignment="Center" />
           <ComboBox Grid.Column="1" ItemsSource="{Binding AnimationFormats}" SelectedItem="{Binding GifOutput}" HorizontalAlignment="Stretch"
-                    ToolTip.Tip="APNG: full color + transparency. MP4: smallest; transparency becomes black." />
+                    ToolTip.Tip="APNG: full color + transparency. MP4: smallest; transparency becomes black.">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="media:AnimationFormat">
+                <TextBlock Text="{Binding Converter={x:Static vm:DisplayConverters.Lowercase}}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
         </Grid>
 
         <CheckBox Content="Overwrite existing outputs" IsChecked="{Binding OverwriteExisting}" />
@@ -179,29 +217,6 @@
               <TextBlock Text="Frames per segment" ToolTip.Tip="Bounds temp disk use; finished segments survive cancel" />
               <NumericUpDown Value="{Binding VideoSegmentFrames}" Minimum="30" Maximum="100000" Increment="100" FormatString="0" />
             </StackPanel>
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-              <StackPanel Grid.Column="0" Spacing="4">
-                <TextBlock Text="Frame interpolation" ToolTip.Tip="RIFE; multiplies the frame rate" />
-                <ComboBox ItemsSource="{Binding InterpolationChoices}" SelectedItem="{Binding Interpolation}" HorizontalAlignment="Stretch">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:InterpolationChoice">
-                      <TextBlock Text="{Binding Label}" />
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="4" IsVisible="{Binding IsInterpolating}">
-                <TextBlock Text="RIFE model" />
-                <ComboBox ItemsSource="{Binding RifeModels}" SelectedItem="{Binding SelectedRifeModel}" HorizontalAlignment="Stretch">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="engines:RifeModel">
-                      <TextBlock Text="{Binding DisplayName}" />
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
-            </Grid>
-            <CheckBox Content="Interpolate only (no upscaling)" IsChecked="{Binding InterpolateOnly}" IsVisible="{Binding IsInterpolating}" />
             <CheckBox Content="Keep variable frame rate" IsChecked="{Binding VfrPassthrough}"
                       ToolTip.Tip="Phones and screen captures: keep each frame's original timing instead of converting to constant fps." />
           </StackPanel>
