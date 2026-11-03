@@ -20,5 +20,9 @@
                                        ChromeMedium="#444444" />
             </FluentTheme.Palettes>
         </FluentTheme>
+        <!-- Always-visible full-width scrollbars (Fluent collapses them and expands on hover after a delay). -->
+        <Style Selector="ScrollViewer">
+            <Setter Property="AllowAutoHide" Value="False" />
+        </Style>
     </Application.Styles>
 </Application>
