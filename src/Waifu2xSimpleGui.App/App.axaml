@@ -8,10 +8,10 @@
         <FluentTheme>
             <FluentTheme.Palettes>
                 <!-- Fixed accent: the OS accent can be grey (unreadable white-on-grey buttons) or absent on Linux. -->
-                <ColorPaletteResources x:Key="Light" Accent="#2F6FD0" />
+                <ColorPaletteResources x:Key="Light" Accent="#2F48C8" />
                 <!-- Dark mode: grey surfaces instead of Fluent's near-black. -->
                 <ColorPaletteResources x:Key="Dark"
-                                       Accent="#3A7FE0"
+                                       Accent="#3F5FE0"
                                        RegionColor="#2B2B2B"
                                        AltHigh="#2B2B2B"
                                        AltMediumHigh="#333333"
@@ -20,9 +20,10 @@
                                        ChromeMedium="#444444" />
             </FluentTheme.Palettes>
         </FluentTheme>
-        <!-- Always-visible full-width scrollbars (Fluent collapses them and expands on hover after a delay). -->
-        <Style Selector="ScrollViewer">
-            <Setter Property="AllowAutoHide" Value="False" />
+        <!-- Always-visible full-width scrollbars (Fluent collapses them and expands on hover after a delay).
+             ListBox/ComboBox/TextBox template-bind their inner ScrollViewer to their own attached value. -->
+        <Style Selector="ScrollViewer, :is(ItemsControl), TextBox">
+            <Setter Property="ScrollViewer.AllowAutoHide" Value="False" />
         </Style>
     </Application.Styles>
 </Application>

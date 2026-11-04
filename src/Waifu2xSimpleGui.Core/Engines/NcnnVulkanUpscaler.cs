@@ -54,13 +54,15 @@ public abstract class NcnnVulkanUpscaler : IUpscaler
         ArgumentNullException.ThrowIfNull(request);
         var gpuCount = request.GpuIds is { Count: > 0 } ids ? ids.Count : 1;
         var inv = CultureInfo.InvariantCulture;
+        var model = Descriptor.GetModel(request.Model);
+        var tile = request.TileSize > 0 ? request.TileSize : model.AutoTile;
 
         var args = new List<string>(24)
         {
             "-i", request.InputPath,
             "-o", request.OutputPath,
             "-s", request.Scale.ToString(inv),
-            "-t", string.Join(',', Enumerable.Repeat(request.TileSize.ToString(inv), gpuCount)),
+            "-t", string.Join(',', Enumerable.Repeat(tile.ToString(inv), gpuCount)),
             "-j", request.Threads.ToArgument(gpuCount),
             "-f", request.OutputFormat.ToString().ToLowerInvariant(),
         };
@@ -81,7 +83,7 @@ public abstract class NcnnVulkanUpscaler : IUpscaler
             args.Add("-v");
         }
 
-        AddEngineArguments(args, request, Descriptor.GetModel(request.Model));
+        AddEngineArguments(args, request, model);
         return args;
     }
 

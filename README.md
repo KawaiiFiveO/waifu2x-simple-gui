@@ -5,14 +5,14 @@
 A fast, minimal, cross-platform GUI for ncnn-vulkan super-resolution engines:
 waifu2x, Real-ESRGAN, Real-CUGAN, and RIFE frame interpolation for images, GIFs and videos.
 
-Built with .NET 10 and Avalonia 12. Status: in development.
+Built with .NET 10 and Avalonia 12. Status: in development (beta).
 
 ![Main window](docs/screenshot.png)
 
 ## Releases
 
 Windows x64 and Linux x64 packages are self-contained: app, all four engines with models, ffmpeg/ffprobe.
-Unpack and run `Waifu2x-Simple-GUI(.exe)`. Needs a Vulkan-capable GPU driver.
+Unpack and run `Waifu2x-Simple-GUI(.exe)`. Vulkan-capable GPU driver is required.
 macOS isn't packaged (untested), but building from source may work.
 
 ## Build
@@ -34,9 +34,9 @@ Output: `artifacts/release/`. Linux AOT needs `clang` and `zlib` dev headers.
 
 ## Engines (development)
 
-For dev runs, put the engines into `engines/` — see [engines/README.md](engines/README.md) for the layout
+For dev runs, put the engines into `engines/`. See [engines/README.md](engines/README.md) for the layout
 and download links. ffmpeg/ffprobe are used from `engines/ffmpeg/` or PATH.
 
 ## License
 
-Waifu2x-Simple-GUI is licensed under the [0BSD License](https://xn--gba.st/kawaiifiveo). Bundled engines, models and tools keep their own licenses: [docs/THIRD-PARTY.md](docs/THIRD-PARTY.md).
+Waifu2x-Simple-GUI is licensed under the [0BSD License](https://xn--gba.st/kawaiifiveo). Bundled engines, models and tools have their own licenses: [docs/THIRD-PARTY.md](docs/THIRD-PARTY.md).

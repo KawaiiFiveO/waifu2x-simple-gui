@@ -70,7 +70,13 @@ public partial class MainViewModel : ViewModelBase
 
     public IReadOnlyList<string> VideoEncoders => VideoCommands.Encoders;
 
-    public IReadOnlyList<string> VideoPresets => VideoCommands.X26xPresets;
+    /// <summary>x264/x265 presets, ProRes profiles, or empty.</summary>
+    public IReadOnlyList<string> VideoPresets => VideoCommands.PresetsFor(VideoEncoder);
+
+    public IReadOnlyList<VideoContainer> VideoContainers { get; } = Enum.GetValues<VideoContainer>();
+
+    [ObservableProperty]
+    public partial VideoContainer VideoContainer { get; set; }
 
     [ObservableProperty]
     public partial UpscalerDescriptor SelectedEngine { get; set; }
@@ -101,6 +107,9 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool Tta { get; set; }
+
+    [ObservableProperty]
+    public partial bool LowPriority { get; set; } = true;
 
     /// <summary><c>null</c> until GPUs are probed, so a saved choice isn't overwritten early.</summary>
     [ObservableProperty]
@@ -133,8 +142,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial string? TempDirectory { get; set; }
 
+    // SelectedVideoPreset last: the combo re-selects once its new list is in place.
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasVideoPreset))]
+    [NotifyPropertyChangedFor(nameof(VideoPresets), nameof(HasVideoPreset), nameof(HasVideoQuality), nameof(PresetLabel), nameof(SelectedVideoPreset))]
     public partial string VideoEncoder { get; set; } = "libx264";
 
     [ObservableProperty]
@@ -143,10 +153,31 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial string VideoPreset { get; set; } = "medium";
 
+    /// <summary>Combo binding: ignores the null a combo writes while its item list is being swapped.</summary>
+    public string? SelectedVideoPreset
+    {
+        get => VideoPreset;
+        set => VideoPreset = value ?? VideoPreset;
+    }
+
     [ObservableProperty]
     public partial int VideoSegmentFrames { get; set; }
 
-    public bool HasVideoPreset => VideoEncoder is "libx264" or "libx265";
+    public bool HasVideoPreset => VideoPresets.Count > 0;
+
+    /// <summary>ProRes quality comes from its profile.</summary>
+    public bool HasVideoQuality => VideoEncoder != VideoCommands.ProRes;
+
+    public string PresetLabel => VideoEncoder == VideoCommands.ProRes ? "Profile" : "Preset";
+
+    partial void OnVideoEncoderChanged(string value)
+    {
+        var presets = VideoCommands.PresetsFor(value);
+        if (presets.Count > 0 && !presets.Contains(VideoPreset))
+        {
+            VideoPreset = VideoCommands.DefaultPreset(value);
+        }
+    }
 
     public IReadOnlyList<SizeModeChoice> SizeModes => SizeModeChoice.All;
 
@@ -263,6 +294,7 @@ public partial class MainViewModel : ViewModelBase
         NoiseLevel = _settings.NoiseLevel;
         CoerceToModel();
         Tta = _settings.Tta;
+        LowPriority = _settings.LowPriority;
         ImageFormat = _settings.ImageFormat;
         GifOutput = _settings.GifOutput;
         OutputDirectory = _settings.OutputDirectory;
@@ -275,6 +307,9 @@ public partial class MainViewModel : ViewModelBase
         VideoEncoder = _settings.VideoEncoder;
         VideoCrf = _settings.VideoCrf;
         VideoPreset = _settings.VideoPreset;
+        OnVideoEncoderChanged(VideoEncoder); // a saved preset may belong to another encoder
+        OnPropertyChanged(nameof(SelectedVideoPreset));
+        VideoContainer = _settings.VideoContainer;
         VideoSegmentFrames = _settings.VideoSegmentFrames;
         SizeMode = SizeModeChoice.All.FirstOrDefault(c => c.Mode == _settings.SizeMode) ?? SizeModeChoice.All[0];
         TargetFactor = _settings.TargetFactor;
@@ -305,6 +340,7 @@ public partial class MainViewModel : ViewModelBase
         Scale = Scale,
         NoiseLevel = NoiseLevel,
         Tta = Tta,
+        LowPriority = LowPriority,
         GpuIds = SelectedGpu?.Ids ?? _settings.GpuIds,
         ImageFormat = ImageFormat,
         GifOutput = GifOutput,
@@ -318,6 +354,7 @@ public partial class MainViewModel : ViewModelBase
         VideoEncoder = VideoEncoder,
         VideoCrf = Math.Clamp(VideoCrf, 0, 63),
         VideoPreset = VideoPreset,
+        VideoContainer = VideoContainer,
         VideoSegmentFrames = Math.Max(30, VideoSegmentFrames),
         SizeMode = SizeMode.Mode,
         TargetFactor = TargetFactor,

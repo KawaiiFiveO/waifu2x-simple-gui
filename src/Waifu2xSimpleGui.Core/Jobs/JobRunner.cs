@@ -35,6 +35,16 @@ public static class JobRunner
             return $"Threads must look like load:proc:save (e.g. {ThreadConfig.Default}).";
         }
 
+        if (VideoCommands.ContainerError(settings.VideoEncoder, settings.VideoContainer) is { } containerError)
+        {
+            return containerError;
+        }
+
+        if (settings.GifOutput == AnimationFormat.Mp4 && settings.VideoEncoder == VideoCommands.ProRes)
+        {
+            return "GIF → MP4 can't use ProRes — choose another video encoder or GIF/APNG output.";
+        }
+
         if (settings.InterpolationFactor > 1)
         {
             var rife = RifeNcnnVulkan.Create(new ToolLocator(settings.EnginesDirectory).EnginesRoot);
@@ -72,6 +82,7 @@ public static class JobRunner
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(progress);
         using var pauseScope = pause?.Enter();
+        using var priorityScope = settings.LowPriority ? ProcessPriority.EnterLow() : null;
         settings = Resolve(settings);
         var tools = new ToolLocator(settings.EnginesDirectory);
         var engine = CreateEngine(settings);

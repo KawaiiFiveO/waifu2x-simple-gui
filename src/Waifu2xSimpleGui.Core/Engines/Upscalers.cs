@@ -15,7 +15,8 @@ public sealed class Waifu2xNcnnVulkan(string engineDirectory) : NcnnVulkanUpscal
         ExecutableName: "waifu2x-ncnn-vulkan",
         Models:
         [
-            new("models-cunet", "CUnet (best for anime art)", Scales, Noise),
+            // Engine auto picks 400 on >2.6 GB cards; 200 is ~18% faster (720p/1080p, RX 9070 XT). UpConv7 is flat.
+            new("models-cunet", "CUnet (best for anime art)", Scales, Noise, AutoTile: 200),
             new("models-upconv_7_anime_style_art_rgb", "UpConv7 anime (fast)", Scales, Noise),
             new("models-upconv_7_photo", "UpConv7 photo", Scales, Noise),
         ],
@@ -51,7 +52,9 @@ public sealed class RealEsrganNcnnVulkan(string engineDirectory) : NcnnVulkanUps
         ExecutableName: "realesrgan-ncnn-vulkan",
         Models:
         [
-            new("realesr-animevideov3", "AnimeVideo v3 (fast, anime video)", [2, 3, 4], []),
+            // The engine's auto tile is 200 for every model (sized for x4plus); this small model runs ~11% faster
+            // at 320 (480p–1080p, RX 9070 XT). x4plus gains nothing from larger tiles, so it stays on auto.
+            new("realesr-animevideov3", "AnimeVideo v3 (fast, anime video)", [2, 3, 4], [], AutoTile: 320),
             new("realesrgan-x4plus-anime", "x4plus anime (anime images)", [4], []),
             new("realesrgan-x4plus", "x4plus (photos / general)", [4], []),
         ],

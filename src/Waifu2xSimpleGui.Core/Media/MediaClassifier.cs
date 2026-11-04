@@ -12,11 +12,21 @@ public static class MediaClassifier
 {
     // Formats the ncnn-vulkan engines decode directly. Anything else is converted to PNG by ffmpeg first (Phase 1).
     private static readonly HashSet<string> NativeImage = new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp" };
-    private static readonly HashSet<string> ConvertibleImage = new(StringComparer.OrdinalIgnoreCase) { ".bmp", ".tif", ".tiff", ".tga" };
+    private static readonly HashSet<string> ConvertibleImage = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".bmp", ".tif", ".tiff", ".tga", ".avif", ".jxl", ".qoi", ".jp2",
+    };
+
     private static readonly HashSet<string> Video = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".flv", ".wmv", ".ts", ".m2ts", ".mpg", ".mpeg",
+        ".mts", ".m2v", ".vob", ".dv", ".3gp", ".ogv", ".asf", ".rm", ".rmvb", ".divx", ".f4v", ".mxf", ".y4m",
+        ".bik", // Bink 1 (game cutscenes); Bink 2 isn't decodable by ffmpeg
     };
+
+    /// <summary>Every supported extension (with dot), images first — for file pickers.</summary>
+    public static IReadOnlyList<string> Extensions { get; } =
+        [.. NativeImage, .. ConvertibleImage, ".gif", .. Video];
 
     /// <summary>Extension-only classification (cheap; used when files are dropped).</summary>
     public static MediaKind Classify(string path)

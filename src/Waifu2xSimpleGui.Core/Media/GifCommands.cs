@@ -143,7 +143,7 @@ public static class GifCommands
     public static List<string> Mp4(string concatList, AppSettings settings, string output, string? resize = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        var pixFmt = settings.VideoEncoder.EndsWith("_qsv", StringComparison.Ordinal) ? "nv12" : "yuv420p";
+        var pixFmt = VideoCommands.PixelFormat(settings.VideoEncoder);
         List<string> args =
         [
             "-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", concatList,

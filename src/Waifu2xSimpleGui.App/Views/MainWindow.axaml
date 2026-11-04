@@ -133,6 +133,8 @@
         </ComboBox>
 
         <CheckBox Content="TTA (slower, slightly better)" IsChecked="{Binding Tta}" />
+        <CheckBox Content="Low priority" IsChecked="{Binding LowPriority}"
+                  ToolTip.Tip="Other apps and the desktop get the CPU and GPU first (GPU priority: Windows only)." />
 
         <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
           <StackPanel Grid.Column="0" Spacing="4">
@@ -165,37 +167,37 @@
           <Button Grid.Column="1" Content="…" Command="{Binding BrowseOutputCommand}" />
         </Grid>
 
-        <Grid ColumnDefinitions="*,90" ColumnSpacing="8">
-          <StackPanel Grid.Column="0" Spacing="4">
-            <TextBlock Text="File name" FontWeight="SemiBold" />
-            <TextBox Text="{Binding FileNameTemplate}" ToolTip.Tip="Tokens: {name} {engine} {scale} {noise}" />
-          </StackPanel>
-          <StackPanel Grid.Column="1" Spacing="4">
-            <TextBlock Text="Format" FontWeight="SemiBold" />
-            <ComboBox ItemsSource="{Binding ImageFormats}" SelectedItem="{Binding ImageFormat}" HorizontalAlignment="Stretch">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="engines:ImageFormat">
-                  <TextBlock Text="{Binding Converter={x:Static vm:DisplayConverters.Lowercase}}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-          </StackPanel>
-        </Grid>
-
-        <Grid ColumnDefinitions="*,120" ColumnSpacing="8">
-          <TextBlock Grid.Column="0" Text="Animated GIFs become" VerticalAlignment="Center" />
-          <ComboBox Grid.Column="1" ItemsSource="{Binding AnimationFormats}" SelectedItem="{Binding GifOutput}" HorizontalAlignment="Stretch"
-                    ToolTip.Tip="APNG: full color + transparency. MP4: smallest; transparency becomes black.">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="media:AnimationFormat">
-                <TextBlock Text="{Binding Converter={x:Static vm:DisplayConverters.Lowercase}}" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-        </Grid>
+        <TextBlock Text="File name" FontWeight="SemiBold" />
+        <TextBox Text="{Binding FileNameTemplate}" ToolTip.Tip="Tokens: {name} {engine} {scale} {noise}" />
 
         <CheckBox Content="Overwrite existing outputs" IsChecked="{Binding OverwriteExisting}" />
         <CheckBox Content="Scan sub-folders" IsChecked="{Binding ScanSubfolders}" />
+
+        <Expander Header="Images" HorizontalAlignment="Stretch">
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+            <StackPanel Grid.Column="0" Spacing="4">
+              <TextBlock Text="Format" ToolTip.Tip="Output format for still images. Videos and GIFs use PNG internally either way." />
+              <ComboBox ItemsSource="{Binding ImageFormats}" SelectedItem="{Binding ImageFormat}" HorizontalAlignment="Stretch">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="engines:ImageFormat">
+                    <TextBlock Text="{Binding Converter={x:Static vm:DisplayConverters.Lowercase}}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="4">
+              <TextBlock Text="Animated GIFs" ToolTip.Tip="What animated GIFs become. APNG: full color + transparency. MP4: smallest; transparency becomes black." />
+              <ComboBox ItemsSource="{Binding AnimationFormats}" SelectedItem="{Binding GifOutput}" HorizontalAlignment="Stretch"
+                        ToolTip.Tip="APNG: full color + transparency. MP4: smallest; transparency becomes black.">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="media:AnimationFormat">
+                    <TextBlock Text="{Binding Converter={x:Static vm:DisplayConverters.Lowercase}}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+          </Grid>
+        </Expander>
 
         <Expander Header="Video" HorizontalAlignment="Stretch">
           <StackPanel Spacing="8">
@@ -204,15 +206,27 @@
                 <TextBlock Text="Encoder" />
                 <ComboBox ItemsSource="{Binding VideoEncoders}" SelectedItem="{Binding VideoEncoder}" HorizontalAlignment="Stretch" />
               </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="4">
+              <StackPanel Grid.Column="1" Spacing="4" IsVisible="{Binding HasVideoQuality}">
                 <TextBlock Text="Quality" ToolTip.Tip="CRF / CQ / QP — lower is better and larger" />
                 <NumericUpDown Value="{Binding VideoCrf}" Minimum="0" Maximum="63" FormatString="0" />
               </StackPanel>
             </Grid>
-            <StackPanel Spacing="4" IsVisible="{Binding HasVideoPreset}">
-              <TextBlock Text="Preset" />
-              <ComboBox ItemsSource="{Binding VideoPresets}" SelectedItem="{Binding VideoPreset}" HorizontalAlignment="Stretch" />
-            </StackPanel>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+              <StackPanel Grid.Column="0" Spacing="4" IsVisible="{Binding HasVideoPreset}">
+                <TextBlock Text="{Binding PresetLabel}" />
+                <ComboBox ItemsSource="{Binding VideoPresets}" SelectedItem="{Binding SelectedVideoPreset}" HorizontalAlignment="Stretch" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="4">
+                <TextBlock Text="Container" ToolTip.Tip="Auto: MKV for MKV/WebM sources, MOV for ProRes, otherwise MP4. MOV suits After Effects/Premiere." />
+                <ComboBox ItemsSource="{Binding VideoContainers}" SelectedItem="{Binding VideoContainer}" HorizontalAlignment="Stretch">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="media:VideoContainer">
+                      <TextBlock Text="{Binding Converter={x:Static vm:DisplayConverters.Lowercase}}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+            </Grid>
             <StackPanel Spacing="4">
               <TextBlock Text="Frames per segment" ToolTip.Tip="Bounds temp disk use; finished segments survive cancel" />
               <NumericUpDown Value="{Binding VideoSegmentFrames}" Minimum="30" Maximum="100000" Increment="100" FormatString="0" />
@@ -261,6 +275,14 @@
     </Grid>
 
     <!-- Log -->
-    <ListBox Classes="compact" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" ItemsSource="{Binding Log}" FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+    <!-- Long lines wrap: no horizontal scrolling. -->
+    <ListBox Classes="compact" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" ItemsSource="{Binding Log}" FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="sys:String">
+          <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
   </Grid>
 </Window>

@@ -12,6 +12,12 @@ public sealed class MediaAndSettingsTests
     [InlineData("a.bmp", MediaKind.Image)]
     [InlineData("a.gif", MediaKind.AnimatedGif)]
     [InlineData("a.MKV", MediaKind.Video)]
+    [InlineData("a.bik", MediaKind.Video)]
+    [InlineData("a.vob", MediaKind.Video)]
+    [InlineData("a.mts", MediaKind.Video)]
+    [InlineData("a.avif", MediaKind.Image)]
+    [InlineData("a.jxl", MediaKind.Image)]
+    [InlineData("a.bk2", MediaKind.Unsupported)]
     [InlineData("a.txt", MediaKind.Unsupported)]
     [InlineData("noext", MediaKind.Unsupported)]
     public void Classifies_by_extension(string path, MediaKind kind)

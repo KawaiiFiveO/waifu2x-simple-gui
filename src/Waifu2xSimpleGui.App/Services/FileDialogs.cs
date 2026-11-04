@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
+using Waifu2xSimpleGui.Core.Media;
 
 namespace Waifu2xSimpleGui.App.Services;
 
@@ -7,11 +8,7 @@ public sealed class FileDialogs(TopLevel topLevel) : IFileDialogs
 {
     private static readonly FilePickerFileType Media = new("Images, GIFs and videos")
     {
-        Patterns =
-        [
-            "*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.tif", "*.tiff", "*.tga", "*.gif",
-            "*.mp4", "*.mkv", "*.webm", "*.mov", "*.avi", "*.m4v", "*.flv", "*.wmv", "*.ts", "*.m2ts", "*.mpg", "*.mpeg",
-        ],
+        Patterns = [.. MediaClassifier.Extensions.Select(e => "*" + e)],
     };
 
     public async Task<IReadOnlyList<string>> PickFilesAsync()

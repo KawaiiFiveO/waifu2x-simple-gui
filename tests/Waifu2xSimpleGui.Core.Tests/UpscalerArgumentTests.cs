@@ -23,13 +23,24 @@ public sealed class UpscalerArgumentTests
         Assert.Equal("out dir", ArgValue(args, "-o"));
         Assert.Equal("2", ArgValue(args, "-s"));
         Assert.Equal("1", ArgValue(args, "-n"));
-        Assert.Equal("0", ArgValue(args, "-t"));
+        Assert.Equal("200", ArgValue(args, "-t")); // cunet auto override
         Assert.Equal("1:2:2", ArgValue(args, "-j"));
         Assert.Equal("png", ArgValue(args, "-f"));
         Assert.Equal(Path.Combine(Root, "waifu2x-ncnn-vulkan", "models-cunet"), ArgValue(args, "-m"));
         Assert.Contains("-v", args);
         Assert.DoesNotContain("-g", args);
         Assert.DoesNotContain("-x", args);
+    }
+
+    [Theory]
+    [InlineData("realesr-animevideov3", 0, "320")] // measured auto override
+    [InlineData("realesr-animevideov3", 128, "128")] // explicit setting wins
+    [InlineData("realesrgan-x4plus", 0, "0")] // engine auto
+    public void Auto_tile_uses_the_model_override(string model, int tile, string expected)
+    {
+        var engine = UpscalerCatalog.Create(UpscalerId.RealEsrgan, Root);
+        var args = engine.BuildArguments(new UpscaleRequest("in", "out") { Model = model, Scale = 4, TileSize = tile });
+        Assert.Equal(expected, ArgValue(args, "-t"));
     }
 
     [Fact]

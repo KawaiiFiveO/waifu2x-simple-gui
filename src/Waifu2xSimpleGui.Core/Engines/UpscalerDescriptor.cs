@@ -12,7 +12,8 @@ public enum UpscalerId
 /// <param name="DisplayName">Label shown in the UI.</param>
 /// <param name="Scales">Supported upscale ratios.</param>
 /// <param name="NoiseLevels">Supported denoise levels; empty when the model has no denoise option.</param>
-public sealed record ModelInfo(string Name, string DisplayName, IReadOnlyList<int> Scales, IReadOnlyList<int> NoiseLevels);
+/// <param name="AutoTile">Tile size used when the setting is 0 (auto) and the engine's own pick is measurably slow; 0 = engine decides.</param>
+public sealed record ModelInfo(string Name, string DisplayName, IReadOnlyList<int> Scales, IReadOnlyList<int> NoiseLevels, int AutoTile = 0);
 
 /// <summary>Static, path-independent description of an engine (used by the UI before any engine is located).</summary>
 public sealed record UpscalerDescriptor(

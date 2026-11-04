@@ -12,9 +12,10 @@ public readonly record struct Rational(long Num, long Den)
 
     public bool IsValid => Num > 0 && Den > 0;
 
-    public static Rational Parse(string? text)
+    /// <param name="separator"><c>/</c> for rates, <c>:</c> for ffprobe aspect ratios.</param>
+    public static Rational Parse(string? text, char separator = '/')
     {
-        var parts = (text ?? string.Empty).Split('/');
+        var parts = (text ?? string.Empty).Split(separator);
         return parts.Length == 2
             && long.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
             && long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var d)
@@ -33,6 +34,8 @@ public sealed record StreamInfo(int Index, string CodecType, string? CodecName);
 /// <param name="IsVfr">r_frame_rate ≠ avg_frame_rate; frames get normalized to <see cref="FrameRate"/>.</param>
 /// <param name="VideoOffset">Video start relative to the container start (seconds); keeps A/V sync on mux.</param>
 /// <param name="ColorMatrix">swscale matrix name: bt709, bt601 or bt2020 (guessed from height when untagged).</param>
+/// <param name="Interlaced">Field-coded source (DVD, camcorder, broadcast, DV); frames get deinterlaced on extract.</param>
+/// <param name="SampleAspect">Pixel aspect ratio; non-square (anamorphic DVD/DV) is re-applied on encode. Invalid = square.</param>
 public sealed record VideoInfo(
     int StreamIndex,
     int Width,
@@ -46,8 +49,12 @@ public sealed record VideoInfo(
     bool FullRange,
     string? ColorPrimaries,
     string? ColorTransfer,
-    IReadOnlyList<StreamInfo> Streams)
+    IReadOnlyList<StreamInfo> Streams,
+    bool Interlaced = false,
+    Rational SampleAspect = default)
 {
+    public bool IsAnamorphic => SampleAspect.IsValid && SampleAspect.Num != SampleAspect.Den;
+
     /// <summary>
     /// VFR passthrough: presentation time of every frame, seconds from the first frame, plus one trailing
     /// entry = end of the last frame. <c>null</c> = constant frame rate at <see cref="FrameRate"/>.
@@ -83,7 +90,20 @@ public static class MediaProbe
             throw new IOException($"ffprobe failed: {string.Join(' ', result.OutputTail)}");
         }
 
-        return ParseVideo(json);
+        var info = ParseVideo(json);
+        if (info.Duration > 0)
+        {
+            return info;
+        }
+
+        // Raw streams (.m2v, .y4m pipes) have no duration: count packets (demux only, fast) for progress/ETA.
+        var (count, text) = await ProcessRunner.CaptureAsync(
+            ffprobePath,
+            ["-v", "error", "-select_streams", info.StreamIndex.ToString(CultureInfo.InvariantCulture), "-count_packets", "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", path],
+            cancellationToken).ConfigureAwait(false);
+        return count.ExitCode == 0 && long.TryParse(text.Trim().TrimEnd(','), NumberStyles.Integer, CultureInfo.InvariantCulture, out var packets) && packets > 0
+            ? info with { EstimatedFrames = packets, Duration = packets / info.FrameRate.Value }
+            : info;
     }
 
     /// <summary>
@@ -143,14 +163,21 @@ public static class MediaProbe
 
         var avg = Rational.Parse(v.AvgFrameRate);
         var r = Rational.Parse(v.RFrameRate);
+        var duration = ParseDouble(v.Duration) ?? ParseDouble(probe.Format?.Duration) ?? 0;
+        if (r.IsValid && (!avg.IsValid || duration <= 0 || avg.Value > r.Value * 1.001))
+        {
+            // No duration (raw streams like .m2v): avg is a demuxer default. avg above r: bogus (DV reports 60000/1).
+            avg = r;
+        }
+
         var fps = avg.IsValid ? avg : r;
         if (!fps.IsValid)
         {
             throw new InvalidDataException("Unknown frame rate.");
         }
 
-        var isVfr = avg.IsValid && r.IsValid && avg.Num * r.Den != r.Num * avg.Den;
-        var duration = ParseDouble(v.Duration) ?? ParseDouble(probe.Format?.Duration) ?? 0;
+        // r = 2·avg is field timing (interlaced broadcast/camcorder), not variable frame rate.
+        var isVfr = avg.IsValid && r.IsValid && avg.Num * r.Den != r.Num * avg.Den && r.Num * avg.Den != 2 * avg.Num * r.Den;
         var frames = !isVfr && long.TryParse(v.NbFrames, NumberStyles.Integer, CultureInfo.InvariantCulture, out var nb) && nb > 0
             ? nb
             : (long)Math.Round(duration * fps.Value);
@@ -177,7 +204,10 @@ public static class MediaProbe
             v.ColorRange == "pc",
             Known(v.ColorPrimaries),
             Known(v.ColorTransfer),
-            [.. streams.Select(s => new StreamInfo(s.Index, s.CodecType ?? "", s.CodecName))]);
+            [.. streams.Select(s => new StreamInfo(s.Index, s.CodecType ?? "", s.CodecName))],
+            // DV is field-coded but ffprobe often reports no field order.
+            v.FieldOrder is "tt" or "bb" or "tb" or "bt" || v.CodecName == "dvvideo",
+            Rational.Parse(v.SampleAspectRatio, ':'));
     }
 
     private static string? Known(string? s) => s is null or "unknown" ? null : s;
@@ -229,6 +259,10 @@ internal sealed class ProbeStream
     public string? ColorPrimaries { get; set; }
 
     public string? ColorTransfer { get; set; }
+
+    public string? FieldOrder { get; set; }
+
+    public string? SampleAspectRatio { get; set; }
 
     public ProbeDisposition? Disposition { get; set; }
 }

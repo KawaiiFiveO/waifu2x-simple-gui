@@ -56,10 +56,17 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
             progress.Report(new JobLog($"{name}: HDR source — output will be 8-bit SDR and look washed out."));
         }
 
+        if (info.Interlaced)
+        {
+            progress.Report(new JobLog($"{name}: interlaced — deinterlacing (same frame rate)."));
+        }
+
         var interpolateOnly = settings.InterpolationFactor > 1 && settings.InterpolateOnly;
+        var container = VideoCommands.ResolveContainer(file.SourcePath, settings.VideoContainer, settings.VideoEncoder);
+        var extension = VideoCommands.OutputExtension(container);
         var finalPath = interpolateOnly
-            ? naming.Reserve(file.SourcePath, VideoCommands.OutputExtension(file.SourcePath), "rife", 1)
-            : naming.Reserve(file.SourcePath, VideoCommands.OutputExtension(file.SourcePath));
+            ? naming.Reserve(file.SourcePath, extension, "rife", 1)
+            : naming.Reserve(file.SourcePath, extension);
         var perSegment = Math.Max(30, settings.VideoSegmentFrames);
         var resume = VideoResume.Open(settings, file.SourcePath, perSegment);
         var done = new Dictionary<int, int>(resume.Segments);
@@ -74,7 +81,7 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
         }
 
         progress.Report(new FileProgress(file.Id, 97));
-        await MuxAsync(file.SourcePath, info, resume, finalPath, progress, name, perSegment, cancellationToken).ConfigureAwait(false);
+        await MuxAsync(file.SourcePath, info, resume, finalPath, container, settings.VideoEncoder, progress, name, perSegment, cancellationToken).ConfigureAwait(false);
         resume.Delete();
         progress.Report(new FileUpdate(file.Id, FileState.Done, OutputPath: finalPath));
     }
@@ -91,7 +98,6 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
         }
 
         var upscaleFrames = !(interpolate && settings.InterpolateOnly);
-        var toExtract = perSegment + (interpolate ? 1 : 0);
         var outInfo = info with { FrameRate = new Rational(info.FrameRate.Num * factor, info.FrameRate.Den) };
         var outHeight = upscaleFrames ? info.Height * settings.Scale : info.Height;
         var resize = OutputSize.Filter(settings, upscaleFrames ? settings.Scale : 1, even: true);
@@ -146,53 +152,7 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
             CancellationToken.None);
 
         var extract = Stage(
-            async () =>
-            {
-                for (var k = 0; ; k++)
-                {
-                    if (done.TryGetValue(k, out var frames))
-                    {
-                        if (frames < perSegment)
-                        {
-                            break;
-                        }
-
-                        continue;
-                    }
-
-                    var dir = workspace.CreateSubdirectory(string.Create(CultureInfo.InvariantCulture, $"seg{k:D5}"));
-                    var inDir = Directory.CreateDirectory(Path.Combine(dir, "in")).FullName;
-                    await FfmpegAsync(VideoCommands.ExtractSegment(file.SourcePath, info, k, perSegment, inDir, toExtract), "extract", ct).ConfigureAwait(false);
-                    var count = Directory.GetFiles(inDir, "*.png").Length;
-                    if (count == 0)
-                    {
-                        Directory.Delete(dir, recursive: true);
-                        if (k == 0)
-                        {
-                            throw new InvalidDataException("No video frames could be decoded.");
-                        }
-
-                        break;
-                    }
-
-                    if (info.FrameTimes is { } times)
-                    {
-                        // Timestamps come from packets; the decoder must agree or timing would drift.
-                        var expected = Math.Min(toExtract, times.Count - 1 - (k * perSegment));
-                        if (count != expected)
-                        {
-                            throw new InvalidDataException(
-                                $"Segment {k}: decoded {count} frames but the timestamps list {expected}. Turn off \"Keep variable frame rate\" for this file.");
-                        }
-                    }
-
-                    await extracted.Writer.WriteAsync(new Segment(k, dir, Math.Min(count, perSegment), count, inDir), ct).ConfigureAwait(false);
-                    if (count < toExtract)
-                    {
-                        break; // Last segment (no overlap frame available).
-                    }
-                }
-            },
+            () => ExtractAsync(file.SourcePath, info, perSegment, interpolate, done, workspace, extracted.Writer, ct),
             extracted.Writer);
 
         var upscale = Stage(
@@ -286,6 +246,131 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
         }
     }
 
+    /// <summary>
+    /// One ffmpeg pass from the first unfinished segment to the end; frames are split into segment folders as they
+    /// arrive. The bounded channel is the back-pressure: while a write waits, the pipe isn't read and ffmpeg blocks.
+    /// Interpolation: each segment also gets the next segment's first frame (overlap), hard-linked.
+    /// </summary>
+    private async Task ExtractAsync(
+        string source, VideoInfo info, int perSegment, bool overlap, Dictionary<int, int> done,
+        TempWorkspace workspace, ChannelWriter<Segment> output, CancellationToken ct)
+    {
+        var first = 0;
+        while (done.TryGetValue(first, out var frames))
+        {
+            if (frames < perSegment)
+            {
+                return; // The last segment is already encoded.
+            }
+
+            first++;
+        }
+
+        var toExtract = perSegment + (overlap ? 1 : 0);
+        (int Index, string Dir, string InDir, int Count)? open = null;
+        (int Index, string Dir, string InDir, int Count)? waitingForOverlap = null;
+        var truncated = false;
+
+        async Task HandOffAsync((int Index, string Dir, string InDir, int Count) seg)
+        {
+            if (done.ContainsKey(seg.Index))
+            {
+                Directory.Delete(seg.Dir, recursive: true); // Encoded in an earlier run.
+                return;
+            }
+
+            if (info.FrameTimes is { } times)
+            {
+                // Timestamps come from packets; the decoder must agree or timing would drift.
+                var expected = Math.Min(toExtract, times.Count - 1 - (seg.Index * perSegment));
+                if (seg.Count != expected)
+                {
+                    throw new InvalidDataException(
+                        $"Segment {seg.Index}: decoded {seg.Count} frames but the timestamps list {expected}. Turn off \"Keep variable frame rate\" for this file.");
+                }
+            }
+
+            await output.WriteAsync(new Segment(seg.Index, seg.Dir, Math.Min(seg.Count, perSegment), seg.Count, seg.InDir), ct).ConfigureAwait(false);
+        }
+
+        async Task ReadAsync(Stream stdout, CancellationToken token)
+        {
+            var buffer = new byte[1 << 20];
+            for (var frame = (long)first * perSegment; ; frame++)
+            {
+                var index = (int)(frame / perSegment);
+                if (open is not { } current || current.Index != index)
+                {
+                    var dir = workspace.CreateSubdirectory(string.Create(CultureInfo.InvariantCulture, $"seg{index:D5}"));
+                    open = (index, dir, Directory.CreateDirectory(Path.Combine(dir, "in")).FullName, 0);
+                }
+
+                var seg = open.Value;
+                var path = Path.Combine(seg.InDir, VideoCommands.FrameName(seg.Count));
+                try
+                {
+                    if (!await PngStream.CopyNextAsync(stdout, path, buffer, token).ConfigureAwait(false))
+                    {
+                        break;
+                    }
+                }
+                catch (EndOfStreamException)
+                {
+                    // ffmpeg died mid-frame; its exit code and message explain why.
+                    File.Delete(path);
+                    truncated = true;
+                    return;
+                }
+
+                open = seg = seg with { Count = seg.Count + 1 };
+                if (waitingForOverlap is { } previous)
+                {
+                    FileLinker.LinkOrCopy(path, Path.Combine(previous.InDir, VideoCommands.FrameName(perSegment)));
+                    waitingForOverlap = null;
+                    await HandOffAsync(previous with { Count = toExtract }).ConfigureAwait(false);
+                }
+
+                if (seg.Count == perSegment)
+                {
+                    open = null;
+                    if (overlap)
+                    {
+                        waitingForOverlap = seg;
+                    }
+                    else
+                    {
+                        await HandOffAsync(seg).ConfigureAwait(false);
+                    }
+                }
+            }
+
+            // End of video: whatever is left is the last segment (no overlap frame exists).
+            if (waitingForOverlap is { } last)
+            {
+                await HandOffAsync(last).ConfigureAwait(false);
+            }
+            else if (open is { Count: > 0 } partial)
+            {
+                await HandOffAsync(partial).ConfigureAwait(false);
+            }
+            else if (open is { } empty)
+            {
+                Directory.Delete(empty.Dir, recursive: true);
+                if (empty.Index == 0)
+                {
+                    throw new InvalidDataException("No video frames could be decoded.");
+                }
+            }
+        }
+
+        var result = await ProcessRunner.RunStreamingAsync(
+            ffmpegPath, VideoCommands.ExtractFrames(source, info, (long)first * perSegment), ReadAsync, ct).ConfigureAwait(false);
+        if (result.ExitCode != 0 || truncated)
+        {
+            throw new IOException($"ffmpeg extract failed (exit {result.ExitCode}): {string.Join(' ', result.OutputTail)}");
+        }
+    }
+
     private static void ExpectFrames(string dir, int expected, string who, int segment)
     {
         var produced = Directory.GetFiles(dir, "*.png").Length;
@@ -295,7 +380,9 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
         }
     }
 
-    private async Task MuxAsync(string source, VideoInfo info, VideoResume resume, string finalPath, IProgress<JobEvent> progress, string name, int perSegment, CancellationToken ct)
+    private async Task MuxAsync(
+        string source, VideoInfo info, VideoResume resume, string finalPath, VideoContainer container, string encoder,
+        IProgress<JobEvent> progress, string name, int perSegment, CancellationToken ct)
     {
         var list = Path.Combine(resume.DirectoryPath, "concat.txt");
         // VFR passthrough: explicit segment durations, so each segment starts exactly where its source frames do.
@@ -308,15 +395,15 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
             ct).ConfigureAwait(false);
 
         Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!);
-        var mkv = finalPath.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase);
         var temp = finalPath + ".w2xsg-part";
         try
         {
-            var result = await ProcessRunner.RunAsync(ffmpegPath, VideoCommands.Mux(list, source, info, temp, mkv, safeMode: false), cancellationToken: ct).ConfigureAwait(false);
+            var result = await ProcessRunner.RunAsync(ffmpegPath, VideoCommands.Mux(list, source, info, temp, container, encoder, safeMode: false), cancellationToken: ct).ConfigureAwait(false);
             if (result.ExitCode != 0)
             {
-                progress.Report(new JobLog($"{name}: stream copy of audio/subtitles failed, retrying with AAC audio and no subtitles. {string.Join(' ', result.OutputTail)}"));
-                await FfmpegAsync(VideoCommands.Mux(list, source, info, temp, mkv, safeMode: true), "mux", ct).ConfigureAwait(false);
+                var hasSubtitles = info.Streams.Any(s => s.CodecType == "subtitle");
+                progress.Report(new JobLog($"{name}: {VideoCommands.CopyFallbackMessage(result.OutputTail, container, hasSubtitles)}"));
+                await FfmpegAsync(VideoCommands.Mux(list, source, info, temp, container, encoder, safeMode: true), "mux", ct).ConfigureAwait(false);
             }
 
             File.Move(temp, finalPath, overwrite: true);

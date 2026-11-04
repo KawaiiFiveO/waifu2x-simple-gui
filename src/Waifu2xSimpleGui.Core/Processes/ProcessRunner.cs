@@ -20,7 +20,7 @@ public static class ProcessRunner
         Action<string>? onLine = null,
         string? workingDirectory = null,
         CancellationToken cancellationToken = default) =>
-        RunCoreAsync(executable, arguments, onLine, null, workingDirectory, cancellationToken);
+        RunCoreAsync(executable, arguments, onLine, null, null, workingDirectory, cancellationToken);
 
     /// <summary>Like <see cref="RunAsync"/>, but stdout is captured separately (e.g. ffprobe JSON); stderr feeds the tail.</summary>
     public static async Task<(ProcessResult Result, string Stdout)> CaptureAsync(
@@ -29,11 +29,26 @@ public static class ProcessRunner
         CancellationToken cancellationToken = default)
     {
         var stdout = new StringBuilder();
-        var result = await RunCoreAsync(executable, arguments, null, stdout, null, cancellationToken).ConfigureAwait(false);
+        var result = await RunCoreAsync(executable, arguments, null, stdout, null, null, cancellationToken).ConfigureAwait(false);
         lock (stdout)
         {
             return (result, stdout.ToString());
         }
+    }
+
+    /// <summary>
+    /// Binary stdout (e.g. ffmpeg <c>image2pipe</c>): <paramref name="readStdout"/> consumes the stream until EOF.
+    /// Reading slowly is the back-pressure — the child blocks on the full pipe. If the reader throws, the
+    /// process is killed (it would otherwise block forever).
+    /// </summary>
+    public static Task<ProcessResult> RunStreamingAsync(
+        string executable,
+        IEnumerable<string> arguments,
+        Func<Stream, CancellationToken, Task> readStdout,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(readStdout);
+        return RunCoreAsync(executable, arguments, null, null, readStdout, null, cancellationToken);
     }
 
     private static async Task<ProcessResult> RunCoreAsync(
@@ -41,6 +56,7 @@ public static class ProcessRunner
         IEnumerable<string> arguments,
         Action<string>? onLine,
         StringBuilder? stdout,
+        Func<Stream, CancellationToken, Task>? readStdout,
         string? workingDirectory,
         CancellationToken cancellationToken)
     {
@@ -64,12 +80,18 @@ public static class ProcessRunner
 
         var tail = new Queue<string>(TailLines);
         var gate = new Lock();
+        var lowerGpu = ProcessPriority.IsLow ? 1 : 0;
 
         void OnData(object? sender, DataReceivedEventArgs e)
         {
             if (e.Data is null)
             {
                 return;
+            }
+
+            if (Volatile.Read(ref lowerGpu) == 1 && sender is Process p && ProcessPriority.TryLowerGpu(p))
+            {
+                Volatile.Write(ref lowerGpu, 0);
             }
 
             lock (gate)
@@ -104,7 +126,11 @@ public static class ProcessRunner
         }
 
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        process.OutputDataReceived += stdout is null ? OnData : OnStdout;
+        if (readStdout is null)
+        {
+            process.OutputDataReceived += stdout is null ? OnData : OnStdout;
+        }
+
         process.ErrorDataReceived += OnData;
 
         if (!process.Start())
@@ -112,16 +138,30 @@ public static class ProcessRunner
             throw new InvalidOperationException($"Failed to start '{executable}'.");
         }
 
+        if (ProcessPriority.IsLow)
+        {
+            ProcessPriority.LowerCpu(process);
+        }
+
         pause?.Register(process);
-        process.BeginOutputReadLine();
+        if (readStdout is null)
+        {
+            process.BeginOutputReadLine();
+        }
+
         process.BeginErrorReadLine();
 
         try
         {
-            // Also waits for both redirected streams to reach EOF.
+            if (readStdout is not null)
+            {
+                await readStdout(process.StandardOutput.BaseStream, cancellationToken).ConfigureAwait(false);
+            }
+
+            // Also waits for the event-read streams to reach EOF.
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is OperationCanceledException || readStdout is not null)
         {
             pause?.Unregister(process);
             TryKill(process);

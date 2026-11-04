@@ -28,6 +28,8 @@ public sealed record AppSettings
     public IReadOnlyList<int> GpuIds { get; init; } = [];
     public string Threads { get; init; } = ThreadConfig.Default.ToString();
     public bool Tta { get; init; }
+    /// <summary>Engines and ffmpeg run at below-normal CPU and (Windows) GPU priority.</summary>
+    public bool LowPriority { get; init; } = true;
 
     // ---- Output ----
     /// <summary><c>null</c> = next to each source file.</summary>
@@ -43,7 +45,9 @@ public sealed record AppSettings
     // ---- Video ----
     public string VideoEncoder { get; init; } = "libx264";
     public int VideoCrf { get; init; } = 18;
+    /// <summary>x264/x265 preset, or ProRes profile (<see cref="VideoCommands.ProResProfiles"/>).</summary>
     public string VideoPreset { get; init; } = "medium";
+    public VideoContainer VideoContainer { get; init; } = VideoContainer.Auto;
     /// <summary>Frames per segment; bounds temp disk usage and enables stage overlap.</summary>
     public int VideoSegmentFrames { get; init; } = 600;
     /// <summary>Video frame-rate multiplier via RIFE; 1 = off.</summary>
