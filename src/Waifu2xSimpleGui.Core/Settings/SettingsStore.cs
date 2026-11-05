@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Waifu2xSimpleGui.Core.Engines;
 
 namespace Waifu2xSimpleGui.Core.Settings;
 
@@ -50,7 +51,7 @@ public sealed class SettingsStore(string filePath)
                 merged[key] = value;
             }
 
-            return merged.Deserialize(SettingsJsonContext.Default.AppSettings) ?? new AppSettings();
+            return Migrate(merged.Deserialize(SettingsJsonContext.Default.AppSettings) ?? new AppSettings());
         }
         catch (JsonException)
         {
@@ -58,6 +59,15 @@ public sealed class SettingsStore(string filePath)
             return new AppSettings();
         }
     }
+
+    /// <summary>v1 saved the then-default threads "1:2:2" on every OS; it becomes today's OS-specific default.</summary>
+    internal static AppSettings Migrate(AppSettings settings) => settings.Version >= 2
+        ? settings
+        : settings with
+        {
+            Version = 2,
+            Threads = settings.Threads.Trim() == ThreadConfig.LegacyDefault.ToString() ? ThreadConfig.Default.ToString() : settings.Threads,
+        };
 
     /// <summary>Atomic write: temp file then replace.</summary>
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)

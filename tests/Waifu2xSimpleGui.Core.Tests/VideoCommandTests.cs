@@ -65,6 +65,26 @@ public sealed class VideoCommandTests
         Assert.StartsWith("bwdif=mode=send_frame:parity=auto:deint=interlaced,fps=690/29,select=gte(n\\,30),", ArgValue(VideoCommands.ExtractFrames("in.mp4", v, 30), "-vf"), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Resize_only_transcode_is_one_pass_without_frame_files()
+    {
+        var v = Fixture("ffprobe-vfr-cover.json") with { Interlaced = true };
+        var args = VideoCommands.TranscodeVideo("in.mp4", v, new AppSettings(), "out.mp4", "scale=640:360");
+
+        Assert.Equal("in.mp4", ArgValue(args, "-i"));
+        Assert.Equal("0:1", ArgValue(args, "-map")); // the main stream, not the cover art
+        Assert.Equal(
+            "bwdif=mode=send_frame:parity=auto:deint=interlaced,fps=690/29,setpts=PTS-STARTPTS,scale=640:360,pad=ceil(iw/2)*2:ceil(ih/2)*2,"
+            + "scale=in_color_matrix=bt709:in_range=tv:out_color_matrix=bt709:out_range=tv,format=yuv420p",
+            ArgValue(args, "-vf"));
+        Assert.Equal("pipe:1", ArgValue(args, "-progress"));
+        Assert.DoesNotContain("image2pipe", args);
+        Assert.Equal(["-f", "mp4", "out.mp4"], args[^3..]);
+
+        // VFR passthrough keeps the source timing: no fps filter.
+        Assert.DoesNotContain("fps=", ArgValue(VideoCommands.TranscodeVideo("in.mp4", v with { FrameTimes = [0, 0.1] }, new AppSettings(), "o.mp4", null), "-vf"), StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("libx264", "-crf", "18")]
     [InlineData("libx265", "-crf", "18")]

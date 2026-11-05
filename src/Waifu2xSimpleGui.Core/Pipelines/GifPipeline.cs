@@ -76,6 +76,17 @@ public sealed class GifPipeline(IUpscaler engine, string ffmpegPath)
             return;
         }
 
+        if (settings.SkipsUpscale)
+        {
+            // Resize only: reassemble from the extracted frames (the resize filter is part of assembly).
+            await Parallel.ForEachAsync(
+                byPrefix.Values,
+                new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 4) },
+                async (g, _) => await AssembleAsync(g, inDir, settings, progress, cancellationToken).ConfigureAwait(false)).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return;
+        }
+
         var ready = Channel.CreateUnbounded<Gif>(new UnboundedChannelOptions { SingleReader = true });
         var assembler = Task.Run(
             async () =>

@@ -24,7 +24,7 @@ public sealed class UpscalerArgumentTests
         Assert.Equal("2", ArgValue(args, "-s"));
         Assert.Equal("1", ArgValue(args, "-n"));
         Assert.Equal("200", ArgValue(args, "-t")); // cunet auto override
-        Assert.Equal("1:2:2", ArgValue(args, "-j"));
+        Assert.Equal(ThreadConfig.Default.ToString(), ArgValue(args, "-j"));
         Assert.Equal("png", ArgValue(args, "-f"));
         Assert.Equal(Path.Combine(Root, "waifu2x-ncnn-vulkan", "models-cunet"), ArgValue(args, "-m"));
         Assert.Contains("-v", args);

@@ -86,6 +86,25 @@ public sealed class MediaAndSettingsTests
         }
     }
 
+    [Theory]
+    [InlineData(1, "1:2:2", null)] // old default → today's OS default
+    [InlineData(1, "2:4:4", "2:4:4")] // user's own choice is kept
+    [InlineData(2, "1:2:2", "1:2:2")] // already migrated: an explicit 1:2:2 stays
+    public void V1_settings_get_the_os_thread_default(int version, string threads, string? expected)
+    {
+        var migrated = SettingsStore.Migrate(new AppSettings { Version = version, Threads = threads });
+        Assert.Equal(2, migrated.Version);
+        Assert.Equal(expected ?? ThreadConfig.Default.ToString(), migrated.Threads);
+    }
+
+    [Theory]
+    [InlineData(true, 32, "1:2:2")]
+    [InlineData(false, 12, "1:2:6")]
+    [InlineData(false, 2, "1:2:2")]
+    [InlineData(false, 64, "1:2:8")]
+    public void Thread_default_depends_on_the_os(bool windows, int processors, string expected) =>
+        Assert.Equal(expected, ThreadConfig.ForPlatform(windows, processors).ToString());
+
     [Fact]
     public async Task Settings_round_trip_and_survive_corruption()
     {

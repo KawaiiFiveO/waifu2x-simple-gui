@@ -8,7 +8,17 @@ namespace Waifu2xSimpleGui.Core.Engines;
 /// </summary>
 public readonly record struct ThreadConfig(int Load, int Proc, int Save)
 {
-    public static ThreadConfig Default { get; } = new(1, 2, 2);
+    // Declared first: static initializers run in order and Default reads this.
+    /// <summary>The default before it depended on the OS (settings written by v0.2.0 and earlier).</summary>
+    public static ThreadConfig LegacyDefault { get; } = new(1, 2, 2);
+
+    /// <summary>Windows: 1:2:2. Elsewhere 1:2:(half the cores, 2–8).</summary>
+    public static ThreadConfig Default { get; } = ForPlatform(OperatingSystem.IsWindows(), Environment.ProcessorCount);
+
+    // Non-Windows engine builds write PNG with stb_image_write (Windows: WIC), which is slow: measured on Linux,
+    // 2 save threads at 100% CPU held an RTX 2080 Ti at ~40% GPU; 6 save threads (12-thread CPU) helped.
+    internal static ThreadConfig ForPlatform(bool windows, int processors) =>
+        windows ? LegacyDefault : new(1, 2, Math.Clamp(processors / 2, 2, 8));
 
     public string ToArgument(int gpuCount)
     {

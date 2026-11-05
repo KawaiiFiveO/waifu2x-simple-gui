@@ -25,6 +25,12 @@ public static class JobRunner
         {
             return "Output factor must be between 0 and 32.";
         }
+
+        if (settings.SkipsUpscale)
+        {
+            return ValidateOutput(settings);
+        }
+
         if (!engine.IsInstalled)
         {
             return $"{engine.Descriptor.DisplayName} not found at {engine.ExecutablePath}. See engines/README.md.";
@@ -35,6 +41,12 @@ public static class JobRunner
             return $"Threads must look like load:proc:save (e.g. {ThreadConfig.Default}).";
         }
 
+        return ValidateOutput(settings) ?? engine.Validate(settings.ToRequest("in", "out"));
+    }
+
+    /// <summary>Checks that apply with or without the upscaling engine.</summary>
+    private static string? ValidateOutput(AppSettings settings)
+    {
         if (VideoCommands.ContainerError(settings.VideoEncoder, settings.VideoContainer) is { } containerError)
         {
             return containerError;
@@ -59,7 +71,7 @@ public static class JobRunner
             }
         }
 
-        return engine.Validate(settings.ToRequest("in", "out"));
+        return null;
     }
 
     /// <summary>Settings as the pipelines use them: Factor mode picks the engine scale.</summary>
@@ -86,7 +98,7 @@ public static class JobRunner
         settings = Resolve(settings);
         var tools = new ToolLocator(settings.EnginesDirectory);
         var engine = CreateEngine(settings);
-        if (settings.SizeMode == OutputSizeMode.Factor && settings.TargetFactor > settings.Scale)
+        if (settings.SizeMode == OutputSizeMode.Factor && !settings.SkipsUpscale && settings.TargetFactor > settings.Scale)
         {
             progress.Report(new JobLog($"The model's largest scale is {settings.Scale}x; the rest of {settings.TargetFactor:0.##}x is plain lanczos upscaling."));
         }
@@ -164,16 +176,28 @@ public static class JobRunner
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                progress.Report(new FileUpdate(video.Id, FileState.Cancelled, "Encoded segments are kept; start again to resume."));
+                progress.Report(new FileUpdate(video.Id, FileState.Cancelled,
+                    VideoPipeline.IsDirectResize(settings) ? null : "Encoded segments are kept; start again to resume."));
                 throw;
             }
             catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or EngineFailedException or System.Text.Json.JsonException)
             {
                 // One bad video must not stop the rest of the batch.
-                progress.Report(new FileUpdate(video.Id, FileState.Failed, ex.Message));
+                progress.Report(new FileUpdate(video.Id, FileState.Failed, WithDiskFullHint(ex.Message)));
             }
         }
     }
+
+    /// <summary>
+    /// Disk-full errors get a pointer to the fix. Video frames are large and Linux /tmp is often a small tmpfs
+    /// (RAM, sometimes with per-user quotas: "Disk quota exceeded").
+    /// </summary>
+    internal static string WithDiskFullHint(string message) =>
+        message.Contains("quota exceeded", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("No space left", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("not enough space", StringComparison.OrdinalIgnoreCase)
+            ? message + " — the temp or output drive is full. Set Advanced → Temp folder to a larger drive, or use fewer frames per segment."
+            : message;
 
     /// <summary>Frame counts up front so a long video isn't weighted like one image (fast: header probe only).</summary>
     private static async Task ReportVideoWeightsAsync(string ffprobe, List<JobFile> videos, IProgress<JobEvent> progress, CancellationToken cancellationToken)

@@ -15,7 +15,7 @@ namespace Waifu2xSimpleGui.Core.Pipelines;
 /// segments). Encoded segments persist for resume; finally they're concatenated and muxed with the
 /// source's audio, subtitles, chapters and metadata.
 /// </summary>
-public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ffprobePath, RifeNcnnVulkan? rife = null)
+public sealed partial class VideoPipeline(IUpscaler engine, string ffmpegPath, string ffprobePath, RifeNcnnVulkan? rife = null)
 {
     /// <param name="Frames">The segment's own source frames.</param>
     /// <param name="Extracted">Frames on disk: own + 1 overlap frame (the next segment's first) when interpolating.</param>
@@ -64,9 +64,15 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
         var interpolateOnly = settings.InterpolationFactor > 1 && settings.InterpolateOnly;
         var container = VideoCommands.ResolveContainer(file.SourcePath, settings.VideoContainer, settings.VideoEncoder);
         var extension = VideoCommands.OutputExtension(container);
-        var finalPath = interpolateOnly
+        var finalPath = interpolateOnly && !settings.SkipsUpscale
             ? naming.Reserve(file.SourcePath, extension, "rife", 1)
             : naming.Reserve(file.SourcePath, extension);
+        if (IsDirectResize(settings))
+        {
+            await ResizeDirectAsync(file, info, settings, finalPath, container, progress, name, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         var perSegment = Math.Max(30, settings.VideoSegmentFrames);
         var resume = VideoResume.Open(settings, file.SourcePath, perSegment);
         var done = new Dictionary<int, int>(resume.Segments);
@@ -81,10 +87,63 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
         }
 
         progress.Report(new FileProgress(file.Id, 97));
-        await MuxAsync(file.SourcePath, info, resume, finalPath, container, settings.VideoEncoder, progress, name, perSegment, cancellationToken).ConfigureAwait(false);
+        // VFR passthrough: explicit segment durations, so each segment starts exactly where its source frames do.
+        var list = Path.Combine(resume.DirectoryPath, "concat.txt");
+        await File.WriteAllLinesAsync(
+            list,
+            resume.Segments.Keys.Order().Select(k => $"file '{Path.GetFileName(resume.SegmentPath(k))}'"
+                + (info.FrameTimes is null
+                    ? string.Empty
+                    : string.Create(CultureInfo.InvariantCulture, $"\nduration {info.SpanSeconds(k * perSegment, (k * perSegment) + resume.Segments[k]):0.######}"))),
+            cancellationToken).ConfigureAwait(false);
+        await MuxAsync(file.SourcePath, info, list, finalPath, container, settings.VideoEncoder, progress, name, cancellationToken).ConfigureAwait(false);
         resume.Delete();
         progress.Report(new FileUpdate(file.Id, FileState.Done, OutputPath: finalPath));
     }
+
+    /// <summary>Resize only, no interpolation: one ffmpeg pass, no frames or segments (nothing to resume).</summary>
+    internal static bool IsDirectResize(AppSettings settings) => settings.SkipsUpscale && settings.InterpolationFactor <= 1;
+
+    private async Task ResizeDirectAsync(
+        JobFile file, VideoInfo info, AppSettings settings, string finalPath, VideoContainer container,
+        IProgress<JobEvent> progress, string name, CancellationToken ct)
+    {
+        using var workspace = TempWorkspace.Create(settings.TempDirectory);
+        var dir = workspace.CreateSubdirectory("video");
+        var video = Path.Combine(dir, "video." + VideoCommands.SegmentFormat(settings.VideoEncoder));
+        var resize = OutputSize.Filter(settings, 1, even: true);
+        var total = Math.Max(1, info.EstimatedFrames);
+        var lastPercent = -1;
+        void OnLine(string line)
+        {
+            if (line.StartsWith("frame=", StringComparison.Ordinal)
+                && long.TryParse(line.AsSpan(6), NumberStyles.None, CultureInfo.InvariantCulture, out var frame))
+            {
+                var percent = (int)Math.Min(95, 95 * frame / total);
+                if (Interlocked.Exchange(ref lastPercent, percent) != percent)
+                {
+                    progress.Report(new FileProgress(file.Id, percent));
+                }
+            }
+        }
+
+        var result = await ProcessRunner.RunAsync(ffmpegPath, VideoCommands.TranscodeVideo(file.SourcePath, info, settings, video, resize), OnLine, cancellationToken: ct).ConfigureAwait(false);
+        if (result.ExitCode != 0)
+        {
+            // -progress lines (key=value) share the tail with ffmpeg's error.
+            var error = result.OutputTail.Where(l => !ProgressLine().IsMatch(l));
+            throw new IOException($"ffmpeg resize failed (exit {result.ExitCode}): {string.Join(' ', error)}");
+        }
+
+        progress.Report(new FileProgress(file.Id, 97));
+        var list = Path.Combine(dir, "concat.txt");
+        await File.WriteAllTextAsync(list, $"file '{Path.GetFileName(video)}'\n", ct).ConfigureAwait(false);
+        await MuxAsync(file.SourcePath, info, list, finalPath, container, settings.VideoEncoder, progress, name, ct).ConfigureAwait(false);
+        progress.Report(new FileUpdate(file.Id, FileState.Done, OutputPath: finalPath));
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\w+=\S*$")]
+    private static partial System.Text.RegularExpressions.Regex ProgressLine();
 
     private async Task RunStagesAsync(
         JobFile file, VideoInfo info, AppSettings settings, int perSegment, VideoResume resume,
@@ -97,10 +156,11 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
             throw new InvalidOperationException("RIFE is required for frame interpolation.");
         }
 
-        var upscaleFrames = !(interpolate && settings.InterpolateOnly);
+        var upscaleFrames = !settings.SkipsUpscale && !(interpolate && settings.InterpolateOnly);
         var outInfo = info with { FrameRate = new Rational(info.FrameRate.Num * factor, info.FrameRate.Den) };
         var outHeight = upscaleFrames ? info.Height * settings.Scale : info.Height;
         var resize = OutputSize.Filter(settings, upscaleFrames ? settings.Scale : 1, even: true);
+        var gpuStages = upscaleFrames || interpolate;
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var ct = linked.Token;
@@ -109,8 +169,9 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
         var interpolated = Channel.CreateBounded<Segment>(1);
         var request = settings with { ImageFormat = ImageFormat.Png };
 
-        // Progress in "ticks": an upscaled frame is worth `factor`, an interpolated output frame 1.
-        var ticksPerFrame = (upscaleFrames ? factor : 0) + (interpolate ? factor : 0);
+        // Progress in "ticks": an upscaled frame is worth `factor`, an interpolated output frame 1;
+        // resize only: an encoded frame 1.
+        var ticksPerFrame = gpuStages ? (upscaleFrames ? factor : 0) + (interpolate ? factor : 0) : 1;
         var totalTicks = Math.Max(1, info.EstimatedFrames * ticksPerFrame);
         long ticks = done.Values.Sum() * (long)ticksPerFrame;
         var lastPercent = -1;
@@ -220,6 +281,10 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
                     await FfmpegAsync(VideoCommands.EncodeSegment(seg.Current, outInfo, settings, part, resize, timing), "encode", ct).ConfigureAwait(false);
                     resume.Commit(seg.Index, seg.Frames, part);
                     Directory.Delete(seg.Directory, recursive: true);
+                    if (!gpuStages)
+                    {
+                        Advance(seg.Frames);
+                    }
                 }
             },
             null);
@@ -380,20 +445,11 @@ public sealed class VideoPipeline(IUpscaler engine, string ffmpegPath, string ff
         }
     }
 
+    /// <param name="list">concat list of the encoded video-only file(s).</param>
     private async Task MuxAsync(
-        string source, VideoInfo info, VideoResume resume, string finalPath, VideoContainer container, string encoder,
-        IProgress<JobEvent> progress, string name, int perSegment, CancellationToken ct)
+        string source, VideoInfo info, string list, string finalPath, VideoContainer container, string encoder,
+        IProgress<JobEvent> progress, string name, CancellationToken ct)
     {
-        var list = Path.Combine(resume.DirectoryPath, "concat.txt");
-        // VFR passthrough: explicit segment durations, so each segment starts exactly where its source frames do.
-        await File.WriteAllLinesAsync(
-            list,
-            resume.Segments.Keys.Order().Select(k => $"file '{Path.GetFileName(resume.SegmentPath(k))}'"
-                + (info.FrameTimes is null
-                    ? string.Empty
-                    : string.Create(CultureInfo.InvariantCulture, $"\nduration {info.SpanSeconds(k * perSegment, (k * perSegment) + resume.Segments[k]):0.######}"))),
-            ct).ConfigureAwait(false);
-
         Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!);
         var temp = finalPath + ".w2xsg-part";
         try

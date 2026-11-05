@@ -21,10 +21,15 @@ public static class OutputSize
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    /// <summary>Engine scale to use: in Factor mode the smallest supported scale ≥ factor (else the largest).</summary>
+    /// <summary>Engine scale to use: in Factor mode the smallest supported scale ≥ factor (else the largest); 1 when resizing only.</summary>
     public static int EngineScale(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        if (settings.SkipsUpscale)
+        {
+            return 1;
+        }
+
         if (settings.SizeMode != OutputSizeMode.Factor)
         {
             return settings.Scale;

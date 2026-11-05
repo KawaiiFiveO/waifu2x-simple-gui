@@ -41,6 +41,52 @@ public sealed class OutputSizeTests
         Assert.Equal("a_waifu2x_1.5x", OutputNaming.ExpandTemplate(s, "a.png"));
         Assert.Matches(OutputNaming.OutputPattern(s.FileNameTemplate)!, "a_waifu2x_1.5x.png");
     }
+
+    [Fact]
+    public void Resize_only_skips_the_engine_scale_and_names_outputs_resize()
+    {
+        var s = new AppSettings { Engine = UpscalerId.Waifu2x, SizeMode = OutputSizeMode.Factor, TargetFactor = 0.5, ResizeOnly = true };
+        Assert.Equal(1, OutputSize.EngineScale(s));
+        Assert.Equal(@"scale=max(1\,round(iw*0.5)):max(1\,round(ih*0.5)):flags=lanczos", OutputSize.Filter(s, 1, even: false));
+        Assert.Equal("a_waifu2x_4x_resize_0.5x", OutputNaming.ExpandTemplate(s, "a_waifu2x_4x.png"));
+
+        // Model scale has nothing to resize: the flag is ignored.
+        Assert.False((s with { SizeMode = OutputSizeMode.ModelScale }).SkipsUpscale);
+    }
+
+    [Theory]
+    [InlineData("a_waifu2x_4x.png", false, true)]
+    [InlineData("a_waifu2x_4x_resize_0.5x.png", true, true)]
+    [InlineData("a_waifu2x_4x.png", true, false)]
+    [InlineData("a.png", false, false)]
+    public void Resize_only_treats_upscaled_files_as_inputs(string file, bool resizeOnly, bool skipped) =>
+        Assert.Equal(skipped, OutputNaming.OutputPattern("{name}_{engine}_{scale}x", resizeOnly)!.IsMatch(file));
+
+    [Fact]
+    public void Size_token_shows_the_fit_box_or_the_factor()
+    {
+        var fit = new AppSettings { SizeMode = OutputSizeMode.Fit, FitWidth = 1920, FitHeight = 1080, ResizeOnly = true, FileNameTemplate = "{name}_{engine}_{size}" };
+        Assert.Equal("a_resize_1920x1080", OutputNaming.ExpandTemplate(fit, "a.png"));
+        Assert.Equal("a_resize_0.5x", OutputNaming.ExpandTemplate(fit with { SizeMode = OutputSizeMode.Factor, TargetFactor = 0.5 }, "a.png"));
+        Assert.Equal("a_waifu2x_4x", OutputNaming.ExpandTemplate(fit with { SizeMode = OutputSizeMode.ModelScale, Scale = 4 }, "a.png"));
+
+        var pattern = OutputNaming.OutputPattern(fit.FileNameTemplate)!;
+        Assert.Matches(pattern, "a_resize_1920x1080.png");
+        Assert.Matches(pattern, "a_resize_0.5x (2).png");
+        Assert.DoesNotMatch(pattern, "a_resize_big.png");
+    }
+
+    [Theory]
+    [InlineData("Disk quota exceeded : '/tmp/x/00000001.png'", true)]
+    [InlineData("No space left on device", true)]
+    [InlineData("There is not enough space on the disk.", true)]
+    [InlineData("ffmpeg encode failed (exit 1): Invalid data", false)]
+    public void Disk_full_errors_point_at_the_temp_folder(string message, bool hinted) =>
+        Assert.Equal(hinted, JobRunner.WithDiskFullHint(message).Contains("Temp folder", StringComparison.Ordinal));
+
+    [Fact]
+    public void Resize_only_without_engine_token_skips_nothing() =>
+        Assert.Null(OutputNaming.OutputPattern("{name}_{scale}x", resizeOnly: true));
 }
 
 /// <summary>Resize step end to end (waifu2x / Real-ESRGAN + ffmpeg); skipped when missing.</summary>
@@ -148,6 +194,25 @@ public sealed class RealOutputSizeTests : IDisposable
         Assert.Equal("240,136", await Size(results[0].OutputPath!)); // 2x engine, then 0.75 → 240x135 → even
         var (_, frames) = await ProcessRunner.CaptureAsync(_ffprobe, ["-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", results[0].OutputPath!], TestContext.Current.CancellationToken);
         Assert.Equal(20, int.Parse(frames.Trim(), CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public async Task Resize_only_resizes_images_gifs_and_videos_without_the_engine()
+    {
+        await Make("testsrc2=size=64x48", P("a.png"), "-frames:v", "1");
+        await Make("testsrc2=size=64x48:rate=10:duration=0.3", P("b.gif"));
+        await Make("testsrc2=size=160x90:rate=24", P("v.mp4"), "-frames:v", "20", "-c:v", "libx264");
+        var settings = new AppSettings { SizeMode = OutputSizeMode.Factor, TargetFactor = 0.5, ResizeOnly = true };
+
+        var results = await Run(settings, P("a.png"), P("b.gif"), P("v.mp4"));
+
+        Assert.EndsWith("a_resize_0.5x.png", results[0].OutputPath, StringComparison.Ordinal);
+        Assert.Equal("32,24", await Size(results[0].OutputPath!));
+        Assert.Equal("32,24", await Size(results[1].OutputPath!));
+        Assert.Equal("80,46", await Size(results[2].OutputPath!)); // 80x45 → even
+
+        var fit = await Run(settings with { SizeMode = OutputSizeMode.Fit, FitWidth = 40, FitHeight = 40 }, P("a.png"));
+        Assert.Equal("40,30", await Size(fit[0].OutputPath!));
     }
 
     private sealed class Sink(ConcurrentDictionary<int, FileUpdate> final) : IProgress<JobEvent>

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using Waifu2xSimpleGui.Core.Media;
 using Waifu2xSimpleGui.Core.Settings;
 
 namespace Waifu2xSimpleGui.Core.Pipelines;
@@ -51,7 +52,8 @@ internal sealed class VideoResume
             file.FullName, file.Length, file.LastWriteTimeUtc.Ticks,
             settings.Engine, settings.Model, settings.Scale, settings.NoiseLevel, settings.Tta,
             settings.VideoEncoder, settings.VideoCrf, settings.VideoPreset, framesPerSegment,
-            settings.InterpolationFactor, settings.RifeModel, settings.InterpolateOnly, settings.VfrPassthrough);
+            settings.InterpolationFactor, settings.RifeModel, settings.InterpolateOnly, settings.VfrPassthrough,
+            settings.SkipsUpscale, OutputSize.Filter(settings, settings.Scale, even: true));
         var key = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..16];
         return new VideoResume(Path.Combine(TempWorkspace.GetRoot(settings.TempDirectory), FolderName, key));
     }

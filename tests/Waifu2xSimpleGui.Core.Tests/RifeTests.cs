@@ -16,7 +16,7 @@ public sealed class RifeArgumentTests
     public void Builds_directory_mode_arguments()
     {
         var rife = RifeNcnnVulkan.Create(Root);
-        var args = rife.BuildArguments("in", "out", 62, 1080, new AppSettings { InterpolationFactor = 2, GpuIds = [0, 1] }).ToList();
+        var args = rife.BuildArguments("in", "out", 62, 1080, new AppSettings { InterpolationFactor = 2, GpuIds = [0, 1], Threads = "1:2:2" }).ToList(); // explicit: the default is OS-specific
 
         Assert.Equal("62", args[args.IndexOf("-n") + 1]);
         Assert.Equal(Path.Combine(Root, "rife-ncnn-vulkan", "rife-v4.6"), args[args.IndexOf("-m") + 1]);

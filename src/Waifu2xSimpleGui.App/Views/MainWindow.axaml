@@ -101,8 +101,12 @@
           <TextBlock Grid.Column="1" Text="×" VerticalAlignment="Center" />
           <NumericUpDown Grid.Column="2" Value="{Binding FitHeight}" Minimum="1" Maximum="65535" Increment="16" FormatString="0" ToolTip.Tip="Max height" />
         </Grid>
+        <CheckBox Content="Resize only (no upscaling)" IsChecked="{Binding ResizeOnly}" IsVisible="{Binding CanResizeOnly}"
+                  ToolTip.Tip="Skip the engine and only resize, relative to the input — e.g. several sizes from one upscaled file. Tick this before adding a folder of upscaled files: otherwise they're skipped as earlier outputs." />
+        <TextBlock Text="For already-upscaled files: tick this before adding them." IsVisible="{Binding CanResizeOnly}"
+                   FontSize="12" Opacity="0.75" TextWrapping="Wrap" Margin="0,-6,0,0" />
 
-        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding ShowEngineScale}">
           <StackPanel Grid.Column="0" Spacing="4" IsVisible="{Binding IsFactorMode}">
             <TextBlock Text="Scale" FontWeight="SemiBold" />
             <TextBlock Text="{Binding FactorHint}" FontSize="12" Opacity="0.75" TextWrapping="Wrap" />
@@ -168,7 +172,7 @@
         </Grid>
 
         <TextBlock Text="File name" FontWeight="SemiBold" />
-        <TextBox Text="{Binding FileNameTemplate}" ToolTip.Tip="Tokens: {name} {engine} {scale} {noise}" />
+        <TextBox Text="{Binding FileNameTemplate}" ToolTip.Tip="Tokens: {name} {engine} {scale} {size} {noise} — {size} is the fit box (1920x1080) or the factor (0.5x)" />
 
         <CheckBox Content="Overwrite existing outputs" IsChecked="{Binding OverwriteExisting}" />
         <CheckBox Content="Scan sub-folders" IsChecked="{Binding ScanSubfolders}" />
@@ -240,12 +244,12 @@
           <StackPanel Spacing="8">
             <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
               <StackPanel Grid.Column="0" Spacing="4">
-                <TextBlock Text="Tile size (0 = auto)" />
-                <NumericUpDown Value="{Binding TileSize}" Minimum="0" Maximum="4096" Increment="32" FormatString="0" />
+                <TextBlock Text="Tile size" ToolTip.Tip="0 = auto" />
+                <NumericUpDown ToolTip.Tip="0 = auto" Value="{Binding TileSize}" Minimum="0" Maximum="4096" Increment="32" FormatString="0" />
               </StackPanel>
               <StackPanel Grid.Column="1" Spacing="4">
-                <TextBlock Text="Threads (load:proc:save)" />
-                <TextBox Text="{Binding Threads}" />
+                <TextBlock Text="Threads" ToolTip.Tip="load:proc:save — decode, GPU and encode threads" />
+                <TextBox Text="{Binding Threads}" ToolTip.Tip="load:proc:save — decode, GPU and encode threads. More save threads help on Linux (slower PNG encoder)." />
               </StackPanel>
             </Grid>
             <TextBlock Text="Temp folder" />
@@ -276,8 +280,15 @@
 
     <!-- Log -->
     <!-- Long lines wrap: no horizontal scrolling. -->
-    <ListBox Classes="compact" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" ItemsSource="{Binding Log}" FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
-             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+    <!-- Select lines (Shift/Ctrl-click, Ctrl+A), then Ctrl+C or right-click to copy. -->
+    <ListBox x:Name="LogList" Classes="compact" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" ItemsSource="{Binding Log}" FontSize="12"
+             SelectionMode="Multiple" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+      <ListBox.ContextMenu>
+        <ContextMenu>
+          <MenuItem x:Name="CopyLogLines" Header="Copy" InputGesture="Ctrl+C" />
+          <MenuItem x:Name="CopyLogAll" Header="Copy all" />
+        </ContextMenu>
+      </ListBox.ContextMenu>
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="sys:String">
           <TextBlock Text="{Binding}" TextWrapping="Wrap" />

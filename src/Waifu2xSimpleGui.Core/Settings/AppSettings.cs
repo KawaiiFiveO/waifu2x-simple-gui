@@ -10,7 +10,8 @@ namespace Waifu2xSimpleGui.Core.Settings;
 /// </summary>
 public sealed record AppSettings
 {
-    public int Version { get; init; } = 1;
+    /// <summary>2: thread default depends on the OS (see <see cref="SettingsStore"/> migration).</summary>
+    public int Version { get; init; } = 2;
 
     // ---- Engine ----
     public UpscalerId Engine { get; init; } = UpscalerId.Waifu2x;
@@ -22,6 +23,13 @@ public sealed record AppSettings
     /// <summary>Fit mode: bounding box (downscale only).</summary>
     public int FitWidth { get; init; } = 3840;
     public int FitHeight { get; init; } = 2160;
+    /// <summary>Skip the engine: only the output-size resize runs, relative to the input (e.g. sizes from one upscale).</summary>
+    public bool ResizeOnly { get; init; }
+
+    /// <summary><see cref="ResizeOnly"/> with a size mode that resizes (Model scale has nothing to do without the engine).</summary>
+    [JsonIgnore]
+    public bool SkipsUpscale => ResizeOnly && SizeMode != OutputSizeMode.ModelScale;
+
     public int NoiseLevel { get; init; } = -1;
     public int TileSize { get; init; }
     /// <summary>Empty = auto. Several ids = multi-GPU (engine-native).</summary>
@@ -34,7 +42,7 @@ public sealed record AppSettings
     // ---- Output ----
     /// <summary><c>null</c> = next to each source file.</summary>
     public string? OutputDirectory { get; init; }
-    /// <summary>Tokens: {name} {engine} {scale} {noise}.</summary>
+    /// <summary>Tokens: {name} {engine} {scale} {size} {noise}.</summary>
     public string FileNameTemplate { get; init; } = "{name}_{engine}_{scale}x";
     public ImageFormat ImageFormat { get; init; } = ImageFormat.Png;
     public bool OverwriteExisting { get; init; }

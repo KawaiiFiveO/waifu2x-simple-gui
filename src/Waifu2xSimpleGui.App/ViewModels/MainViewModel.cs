@@ -182,8 +182,18 @@ public partial class MainViewModel : ViewModelBase
     public IReadOnlyList<SizeModeChoice> SizeModes => SizeModeChoice.All;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsFactorMode), nameof(IsFitMode), nameof(ShowScale), nameof(FactorHint))]
+    [NotifyPropertyChangedFor(nameof(IsFactorMode), nameof(IsFitMode), nameof(ShowScale), nameof(FactorHint), nameof(CanResizeOnly), nameof(ShowEngineScale))]
     public partial SizeModeChoice SizeMode { get; set; } = SizeModeChoice.All[0];
+
+    /// <summary>Skip the engine; Factor/Fit apply to the inputs as they are.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowEngineScale))]
+    public partial bool ResizeOnly { get; set; }
+
+    public bool CanResizeOnly => SizeMode.Mode != OutputSizeMode.ModelScale;
+
+    /// <summary>Scale/denoise row: hidden while resizing only.</summary>
+    public bool ShowEngineScale => !(ResizeOnly && CanResizeOnly);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FactorHint))]
@@ -315,6 +325,7 @@ public partial class MainViewModel : ViewModelBase
         TargetFactor = _settings.TargetFactor;
         FitWidth = _settings.FitWidth;
         FitHeight = _settings.FitHeight;
+        ResizeOnly = _settings.ResizeOnly;
         Interpolation = InterpolationChoice.All.FirstOrDefault(c => c.Factor == _settings.InterpolationFactor) ?? InterpolationChoice.All[0];
         SelectedRifeModel = RifeNcnnVulkan.Models.FirstOrDefault(m => m.Name == _settings.RifeModel) ?? RifeNcnnVulkan.Models[0];
         InterpolateOnly = _settings.InterpolateOnly;
@@ -360,6 +371,7 @@ public partial class MainViewModel : ViewModelBase
         TargetFactor = TargetFactor,
         FitWidth = Math.Max(1, FitWidth),
         FitHeight = Math.Max(1, FitHeight),
+        ResizeOnly = ResizeOnly,
         InterpolationFactor = Interpolation.Factor,
         RifeModel = SelectedRifeModel.Name,
         InterpolateOnly = InterpolateOnly,
@@ -381,7 +393,7 @@ public partial class MainViewModel : ViewModelBase
     {
         var recurse = ScanSubfolders;
         var input = paths.ToList();
-        var outputs = OutputNaming.OutputPattern(FileNameTemplate);
+        var outputs = OutputNaming.OutputPattern(FileNameTemplate, ResizeOnly && CanResizeOnly);
         var skipped = 0;
         bool IsEarlierOutput(string file)
         {
@@ -404,7 +416,10 @@ public partial class MainViewModel : ViewModelBase
             added++;
         }
 
-        AppendLog($"Added {added} file(s)." + (skipped > 0 ? $" Skipped {skipped} earlier output(s)." : ""));
+        AppendLog($"Added {added} file(s)." + (skipped == 0 ? ""
+            : ResizeOnly && CanResizeOnly
+                ? $" Skipped {skipped} earlier resize output(s)."
+                : $" Skipped {skipped} earlier output(s) — to resize upscaled files, choose Exact factor or Fit within, tick \"Resize only\", then add them again."));
         UpdateSummary();
     }
 
@@ -593,8 +608,11 @@ public partial class MainViewModel : ViewModelBase
         _active.Restart();
         _etaClock.Start();
         var scale = JobRunner.Resolve(settings).Scale;
-        AppendLog($"Started {items.Count} file(s) with {SelectedEngine.DisplayName}, "
-            + (settings.SizeMode == OutputSizeMode.Factor ? $"{settings.TargetFactor:0.##}x (engine {scale}x)." : $"{scale}x."));
+        AppendLog(settings.SkipsUpscale
+            ? $"Started {items.Count} file(s), resize only: "
+                + (settings.SizeMode == OutputSizeMode.Factor ? $"{settings.TargetFactor:0.##}x." : $"fit within {settings.FitWidth}×{settings.FitHeight}.")
+            : $"Started {items.Count} file(s) with {SelectedEngine.DisplayName}, "
+                + (settings.SizeMode == OutputSizeMode.Factor ? $"{settings.TargetFactor:0.##}x (engine {scale}x)." : $"{scale}x."));
         UpdateSummary();
         try
         {

@@ -39,6 +39,17 @@ public sealed class ImagePipeline(IUpscaler engine, ToolLocator tools)
             entries[i] = new Entry(files[i], stem, naming.Reserve(files[i].SourcePath, outExt), Path.Combine(outDir, stem + outExt));
         }
 
+        var resize = OutputSize.Filter(settings, settings.Scale, even: false);
+        var ffmpeg = resize is null && !settings.SkipsUpscale
+            ? null
+            : tools.FindFfmpeg() ?? throw new InvalidOperationException("ffmpeg is required for the output size setting.");
+        if (settings.SkipsUpscale)
+        {
+            // Factor 1 still converts to the output format ("null" = pass-through filter).
+            await ResizeOnlyAsync(entries, ffmpeg!, resize ?? "null", settings.OverwriteExisting, progress, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         await StageAsync(entries, inDir, progress, cancellationToken).ConfigureAwait(false);
         var byStem = entries.Where(e => !e.Finished).ToDictionary(e => e.Stem, StringComparer.OrdinalIgnoreCase);
         if (byStem.Count == 0)
@@ -52,11 +63,9 @@ public sealed class ImagePipeline(IUpscaler engine, ToolLocator tools)
         }
 
         // Moves (or resizes) run off the engine's output thread so a slow destination never stalls the engine's pipes.
-        var resize = OutputSize.Filter(settings, settings.Scale, even: false);
-        var ffmpeg = resize is null ? null : tools.FindFfmpeg() ?? throw new InvalidOperationException("ffmpeg is required for the output size setting.");
         Task FinishAsync(Entry e) => resize is null
             ? Task.Run(() => MoveToFinal(e, settings.OverwriteExisting, progress), CancellationToken.None)
-            : ResizeToFinalAsync(e, ffmpeg!, resize, settings.OverwriteExisting, progress, cancellationToken);
+            : ResizeToFinalAsync(e, e.TempOutput, ffmpeg!, resize, settings.OverwriteExisting, progress, cancellationToken);
 
         var completed = Channel.CreateUnbounded<Entry>();
         var workers = resize is null ? 1 : Math.Max(1, Environment.ProcessorCount / 2);
@@ -181,12 +190,41 @@ public sealed class ImagePipeline(IUpscaler engine, ToolLocator tools)
         }
     }
 
-    private static async Task ResizeToFinalAsync(Entry e, string ffmpeg, string filter, bool overwrite, IProgress<JobEvent> progress, CancellationToken ct)
+    /// <summary>Resize only: no staging or engine, ffmpeg reads each source directly.</summary>
+    private static async Task ResizeOnlyAsync(Entry[] entries, string ffmpeg, string filter, bool overwrite, IProgress<JobEvent> progress, CancellationToken cancellationToken)
+    {
+        var options = new ParallelOptions
+        {
+            CancellationToken = cancellationToken,
+            MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2),
+        };
+
+        try
+        {
+            await Parallel.ForEachAsync(entries, options, async (e, ct) =>
+            {
+                progress.Report(new FileUpdate(e.File.Id, FileState.Processing));
+                await ResizeToFinalAsync(e, e.File.SourcePath, ffmpeg, filter, overwrite, progress, ct).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested(); // a resize cut short is left unfinished, not failed
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            foreach (var e in entries.Where(e => !e.Finished))
+            {
+                progress.Report(new FileUpdate(e.File.Id, FileState.Cancelled));
+            }
+
+            throw;
+        }
+    }
+
+    private static async Task ResizeToFinalAsync(Entry e, string input, string ffmpeg, string filter, bool overwrite, IProgress<JobEvent> progress, CancellationToken ct)
     {
         var resized = e.TempOutput + ".resized" + Path.GetExtension(e.TempOutput);
         try
         {
-            var r = await ProcessRunner.RunAsync(ffmpeg, OutputSize.ResizeImage(e.TempOutput, filter, resized), cancellationToken: ct).ConfigureAwait(false);
+            var r = await ProcessRunner.RunAsync(ffmpeg, OutputSize.ResizeImage(input, filter, resized), cancellationToken: ct).ConfigureAwait(false);
             if (r.ExitCode != 0)
             {
                 throw new IOException($"ffmpeg resize failed: {string.Join(' ', r.OutputTail)}");

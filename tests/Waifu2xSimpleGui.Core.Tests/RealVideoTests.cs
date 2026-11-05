@@ -101,6 +101,44 @@ public sealed class RealVideoTests : IDisposable
         Assert.Empty(Directory.EnumerateDirectories(Path.Combine(TempRoot, "resume")));
     }
 
+    [Fact]
+    public async Task Resize_only_transcodes_in_one_pass_keeping_audio_subtitles_and_sync()
+    {
+        var src = Path.Combine(_dir.FullName, "up.mkv");
+        var srt = Path.Combine(_dir.FullName, "s.srt");
+        await File.WriteAllTextAsync(srt, "1\n00:00:00,500 --> 00:00:02,000\nhello\n", TestContext.Current.CancellationToken);
+        await Ffmpeg(
+            "-itsoffset", "0.1", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=3267/125",
+            "-f", "lavfi", "-i", "sine=f=440:duration=4", "-i", srt,
+            "-map", "0:v", "-map", "1:a", "-map", "2:s", "-frames:v", "84", "-c:v", "libx264", "-c:a", "aac", src);
+        var settings = Settings() with { SizeMode = OutputSizeMode.Factor, TargetFactor = 0.5, ResizeOnly = true };
+        var percents = new ConcurrentQueue<double>();
+
+        var updates = new Sink(e =>
+        {
+            if (e is FileProgress p)
+            {
+                percents.Enqueue(p.Percent);
+            }
+        });
+        await JobRunner.RunAsync([new JobFile(0, src, MediaKind.Video)], settings, updates, TestContext.Current.CancellationToken);
+
+        var final = updates.Final[0];
+        Assert.True(final.State == FileState.Done, final.Detail);
+        Assert.Equal(Path.Combine(_dir.FullName, "out", "up_resize_0.5x.mkv"), final.OutputPath);
+        Assert.Equal("80,46,3267/125,84", await Probe(final.OutputPath!, "stream=width,height,nb_read_frames,r_frame_rate")); // 80x45 → even
+        Assert.Equal("aac", await Probe(final.OutputPath!, "stream=codec_name", "a:0"));
+        Assert.Equal(await Probe(src, "stream=codec_name", "s:0"), await Probe(final.OutputPath!, "stream=codec_name", "s:0"));
+
+        static double Start(string s) => double.Parse(s, CultureInfo.InvariantCulture);
+        var srcOffset = Start(await Probe(src, "stream=start_time")) - Start(await Probe(src, "stream=start_time", "a:0"));
+        var outOffset = Start(await Probe(final.OutputPath!, "stream=start_time")) - Start(await Probe(final.OutputPath!, "stream=start_time", "a:0"));
+        Assert.Equal(srcOffset, outOffset, 0.042);
+
+        Assert.Contains(percents, p => p is > 0 and < 97); // ffmpeg -progress drives the bar
+        Assert.False(Directory.Exists(Path.Combine(TempRoot, "resume")), "direct resize must not write frames or segments");
+    }
+
     private string TempRoot => Path.Combine(_dir.FullName, "tmp", SettingsStore.AppFolderName);
 
     [Fact]
@@ -133,9 +171,11 @@ public sealed class RealVideoTests : IDisposable
     }
 
     [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    public async Task Vfr_passthrough_keeps_every_frame_time(int interpolation)
+    [InlineData(1, false)]
+    [InlineData(2, false)]
+    [InlineData(1, true)] // direct one-pass resize
+    [InlineData(2, true)] // resize only + RIFE: frame path without the engine
+    public async Task Vfr_passthrough_keeps_every_frame_time(int interpolation, bool resizeOnly)
     {
         Assert.SkipWhen(interpolation > 1 && !RifeNcnnVulkan.Create(_engines).IsInstalled, "RIFE not installed");
         var src = Path.Combine(_dir.FullName, "vfr.mp4");
@@ -145,6 +185,10 @@ public sealed class RealVideoTests : IDisposable
             "-vf", "setpts='if(lt(N,25),N/30,25/30+(N-25)/12+mod(N,3)*0.01)/TB'",
             "-fps_mode", "passthrough", "-video_track_timescale", "90000", "-c:v", "libx264", src);
         var settings = Settings() with { VfrPassthrough = true, InterpolationFactor = interpolation };
+        if (resizeOnly)
+        {
+            settings = settings with { SizeMode = OutputSizeMode.Fit, FitWidth = 120, FitHeight = 120, ResizeOnly = true };
+        }
 
         var updates = new Sink();
         await JobRunner.RunAsync([new JobFile(0, src, MediaKind.Video)], settings, updates, TestContext.Current.CancellationToken);

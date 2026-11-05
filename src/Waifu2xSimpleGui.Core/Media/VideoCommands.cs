@@ -128,21 +128,77 @@ public static class VideoCommands
             "-vf", (resize is null ? "" : resize + ",") + $"pad=ceil(iw/2)*2:ceil(ih/2)*2,scale=out_color_matrix={info.ColorMatrix}:out_range=tv,format={PixelFormat(encoder)}{sar}",
         });
         args.AddRange(EncoderArguments(encoder, settings.VideoCrf, settings.VideoPreset));
+        args.AddRange(ColorTags(info));
+        args.AddRange(["-f", SegmentFormat(encoder), output]);
+        return args;
+    }
+
+    /// <summary>
+    /// Resize only: the source's video stream decoded, filtered and encoded in one ffmpeg pass — no frame files
+    /// (PNG frames of an already-upscaled video fill a tmpfs /tmp). Same filters, color handling and encoder
+    /// settings as <see cref="ExtractFrames"/> + <see cref="EncodeSegment"/>; video-only output starting at 0, for
+    /// <see cref="Mux"/>. <c>-progress pipe:1</c> reports <c>frame=N</c> lines.
+    /// </summary>
+    public static List<string> TranscodeVideo(string source, VideoInfo info, AppSettings settings, string output, string? resize)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        ArgumentNullException.ThrowIfNull(settings);
+        var encoder = settings.VideoEncoder;
+        var filters = new List<string>();
+        if (info.Interlaced)
+        {
+            filters.Add("bwdif=mode=send_frame:parity=auto:deint=interlaced");
+        }
+
+        if (info.IsVfr && info.FrameTimes is null)
+        {
+            filters.Add($"fps={info.FrameRate}");
+        }
+
+        filters.Add("setpts=PTS-STARTPTS"); // Mux applies the source's video offset
+        if (resize is not null)
+        {
+            filters.Add(resize);
+        }
+
+        var range = info.FullRange ? "pc" : "tv";
+        filters.Add("pad=ceil(iw/2)*2:ceil(ih/2)*2");
+        filters.Add($"scale=in_color_matrix={info.ColorMatrix}:in_range={range}:out_color_matrix={info.ColorMatrix}:out_range=tv");
+        filters.Add($"format={PixelFormat(encoder)}");
+        if (info.IsAnamorphic)
+        {
+            filters.Add($"setsar={info.SampleAspect}");
+        }
+
+        var args = new List<string>
+        {
+            "-hide_banner", "-nostdin", "-v", "error", "-nostats", "-progress", "pipe:1", "-y",
+            "-i", source,
+            "-map", "0:" + info.StreamIndex.ToString(Inv),
+            "-vf", string.Join(',', filters),
+            "-fps_mode", "passthrough",
+        };
+        args.AddRange(EncoderArguments(encoder, settings.VideoCrf, settings.VideoPreset));
+        args.AddRange(ColorTags(info));
+        args.AddRange(["-f", SegmentFormat(encoder), output]);
+        return args;
+    }
+
+    private static string[] ColorTags(VideoInfo info)
+    {
         var (primaries, transfer) = info.ColorMatrix switch
         {
             "bt709" => ("bt709", "bt709"),
             "bt2020" => ("bt2020", "bt2020-10"),
             _ => ("smpte170m", "smpte170m"),
         };
-        args.AddRange(
+        return
         [
             "-colorspace", info.ColorSpaceTag,
             "-color_primaries", info.ColorPrimaries ?? primaries,
             "-color_trc", info.ColorTransfer ?? transfer,
             "-color_range", "tv",
-            "-f", SegmentFormat(encoder), output,
-        ]);
-        return args;
+        ];
     }
 
     /// <summary>
